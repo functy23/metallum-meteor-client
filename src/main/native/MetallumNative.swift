@@ -1285,6 +1285,10 @@ public func metallum_MTLCommandBuffer_encodePresentTextureToDrawable(
             vertexCount: 3
         )
 
+        if let globalFence {
+            encoder.updateFence(globalFence, after: .fragment)
+        }
+
         encoder.endEncoding()
         commandBuffer.present(drawable)
     }
