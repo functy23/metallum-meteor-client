@@ -1,5 +1,6 @@
 package com.metallum.client.metal.render;
 
+import com.metallum.client.metal.render.mtl.MTLBuffer;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBuffer.Usage;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -15,7 +16,6 @@ import net.minecraft.util.Mth;
 import org.jspecify.annotations.NonNull;
 import org.lwjgl.system.MemoryUtil;
 
-import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -93,7 +93,7 @@ final class MetalTransientMemory implements TransientMemory {
     }
 
     private MetalGpuBuffer wrap(final MetalGpuBuffer block, @Usage final int usage) {
-        return new TransientGpuBuffer(device, block.nativeHandle(), usage, block.size(), this, submitIndex);
+        return new TransientGpuBuffer(device, block.metalBuffer(), usage, block.size(), this, submitIndex);
     }
 
     @Override
@@ -183,7 +183,7 @@ final class MetalTransientMemory implements TransientMemory {
 
         TransientGpuBuffer(
                 final MetalDevice device,
-                final MemorySegment handle,
+                final MTLBuffer handle,
                 @Usage final int usage,
                 final long size,
                 final MetalTransientMemory owner,

@@ -1,9 +1,8 @@
 package com.metallum.client.metal.render;
 
-import com.metallum.client.metal.render.bridge.MetalNativeBridge;
-import com.metallum.client.metal.render.mtl.MTLPixelFormat;
-import com.metallum.client.metal.render.mtl.MTLStorageMode;
-import com.metallum.client.metal.render.mtl.MTLTextureUsage;
+import com.metallum.client.metal.render.mtl.*;
+import com.metallum.objc.Msg;
+import com.metallum.objc.ObjC;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.textures.GpuTexture;
 import net.fabricmc.api.EnvType;
@@ -15,6 +14,8 @@ import java.lang.foreign.MemorySegment;
 
 @Environment(EnvType.CLIENT)
 final class MetalGpuTexture extends GpuTexture {
+    private static final Msg SET_LABEL = Msg.ofVoid("setLabel:", java.lang.foreign.ValueLayout.ADDRESS);
+
     private final MetalDevice device;
     private final MTLPixelFormat mtlPixelFormat;
     private boolean closed;
@@ -40,18 +41,33 @@ final class MetalGpuTexture extends GpuTexture {
         this.device = device;
         this.mtlPixelFormat = MTLPixelFormat.from(format);
 
-        this.nativeHandle = MetalNativeBridge.metallum_create_texture_2d(
-                device.metalDeviceHandle(),
-                this.mtlPixelFormat,
-                width,
-                height,
-                depthOrLayers,
-                mipLevels,
-                (usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0 ? 1L : 0L,
-                toMtlTextureUsage(usage),
-                MTLStorageMode.Private,
-                label
-        );
+        try (MTLTextureDescriptor descriptor = MTLTextureDescriptor.create()) {
+            descriptor.pixelFormat(this.mtlPixelFormat);
+            descriptor.width(width);
+            descriptor.height(height);
+            if ((usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0) {
+                if (depthOrLayers > 6) {
+                    descriptor.textureType(MTLTextureType.TypeCubeArray);
+                    descriptor.arrayLength(depthOrLayers / 6);
+                } else {
+                    descriptor.textureType(MTLTextureType.TypeCube);
+                    descriptor.arrayLength(1);
+                }
+            } else if (depthOrLayers > 1) {
+                descriptor.textureType(MTLTextureType.Type2DArray);
+                descriptor.arrayLength(depthOrLayers);
+            }
+            descriptor.mipmapLevelCount(Math.max(mipLevels, 1));
+            descriptor.usage(toMtlTextureUsage(usage));
+            descriptor.storageMode(MTLStorageMode.Private);
+            descriptor.hazardTrackingMode(MTLHazardTrackingMode.Untracked);
+            this.nativeHandle = device.metalDevice().newTexture(descriptor);
+        }
+        if (label != null) {
+            MemorySegment nsLabel = ObjC.nsString(label);
+            SET_LABEL.send(this.nativeHandle, nsLabel);
+            ObjC.release(nsLabel);
+        }
     }
 
     int pixelSize() {

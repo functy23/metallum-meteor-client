@@ -2,6 +2,7 @@ package com.metallum.client.metal.render;
 
 import com.metallum.Metallum;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLDevice;
 import com.mojang.blaze3d.GLFWErrorCapture;
 import com.mojang.blaze3d.shaders.GpuDebugOptions;
 import com.mojang.blaze3d.shaders.ShaderSource;
@@ -42,12 +43,13 @@ public class MetalBackend implements GpuBackend {
         MemorySegment cocoaView;
         MemorySegment metalLayer;
         String deviceName;
-        deviceHandle = MetalNativeBridge.metallum_create_system_default_device();
-        if (MetalNativeBridge.isNullHandle(deviceHandle)) {
+        MTLDevice metalDevice = MTLDevice.createSystemDefault();
+        if (metalDevice == null) {
             throw new BackendCreationException("MTLCreateSystemDefaultDevice returned null", BackendCreationException.Reason.OTHER);
         }
+        deviceHandle = metalDevice.handle();
 
-        deviceName = MetalNativeBridge.metallum_copy_device_name(deviceHandle);
+        deviceName = metalDevice.name();
         if (deviceName.isBlank()) deviceName = "<unknown Metal device>";
 
         cocoaWindow = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaWindow(window));

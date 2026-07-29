@@ -1,13 +1,20 @@
 package com.metallum.client.metal.render.mtl;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.objc.AutoreleasePool;
+import com.metallum.objc.Msg;
+import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
 import java.lang.foreign.MemorySegment;
 
+import static java.lang.foreign.ValueLayout.ADDRESS;
+
 @Environment(EnvType.CLIENT)
 public final class MTLCommandBuffer {
+    private static final Msg BLIT_COMMAND_ENCODER = Msg.of("blitCommandEncoder", ADDRESS);
+
     private MemorySegment handle;
 
     MTLCommandBuffer(final MemorySegment handle) {
@@ -15,11 +22,13 @@ public final class MTLCommandBuffer {
     }
 
     public MTLBlitCommandEncoder makeBlitCommandEncoder() {
-        MemorySegment encoder = MetalNativeBridge.MTLCommandBuffer_makeBlitCommandEncoder(handle());
-        if (MetalNativeBridge.isNullHandle(encoder)) {
-            throw new IllegalStateException("Failed to create MTLBlitCommandEncoder");
+        try (AutoreleasePool _ = AutoreleasePool.push()) {
+            MemorySegment encoder = BLIT_COMMAND_ENCODER.sendPtr(handle());
+            if (ObjC.isNil(encoder)) {
+                throw new IllegalStateException("Failed to create MTLBlitCommandEncoder");
+            }
+            return new MTLBlitCommandEncoder(ObjC.retain(encoder));
         }
-        return new MTLBlitCommandEncoder(encoder);
     }
 
     public MTLRenderCommandEncoder makeRenderCommandEncoder(
@@ -49,7 +58,7 @@ public final class MTLCommandBuffer {
                 clearDepthEnabled,
                 clearDepth
         );
-        if (MetalNativeBridge.isNullHandle(encoder)) {
+        if (ObjC.isNil(encoder)) {
             throw new IllegalStateException("Failed to create MTLRenderCommandEncoder");
         }
         return new MTLRenderCommandEncoder(encoder);
@@ -99,14 +108,14 @@ public final class MTLCommandBuffer {
     }
 
     public boolean isCompleted() {
-        if (MetalNativeBridge.isNullHandle(handle)) {
+        if (ObjC.isNil(handle)) {
             return true;
         }
         return MetalNativeBridge.MTLCommandBuffer_isCompleted(handle()) == 1;
     }
 
     public boolean waitUntilCompleted(final long timeoutMs) {
-        if (MetalNativeBridge.isNullHandle(handle)) {
+        if (ObjC.isNil(handle)) {
             return true;
         }
         return MetalNativeBridge.MTLCommandBuffer_waitUntilCompleted(handle(), Math.max(timeoutMs, 0L)) == 0;
@@ -121,15 +130,15 @@ public final class MTLCommandBuffer {
     }
 
     public void close() {
-        if (MetalNativeBridge.isNullHandle(handle)) {
+        if (ObjC.isNil(handle)) {
             return;
         }
-        MetalNativeBridge.metallum_release_object(handle);
+        ObjC.release(handle);
         handle = MemorySegment.NULL;
     }
 
     private MemorySegment handle() {
-        if (MetalNativeBridge.isNullHandle(handle)) {
+        if (ObjC.isNil(handle)) {
             throw new IllegalStateException("MTLCommandBuffer is closed");
         }
         return handle;

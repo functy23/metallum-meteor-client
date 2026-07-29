@@ -1,6 +1,7 @@
 package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLBuffer;
 import com.metallum.client.metal.render.mtl.MTLHazardTrackingMode;
 import com.metallum.client.metal.render.mtl.MTLResourceOptions;
 import com.metallum.client.metal.render.mtl.MTLStorageMode;
@@ -23,7 +24,7 @@ class MetalGpuBuffer extends GpuBuffer {
     private final long resourceOptions;
     private final long allocationSize;
     @Nullable
-    private MemorySegment nativeHandle;
+    private MTLBuffer nativeBuffer;
     @Nullable
     private ByteBuffer storage;
     private boolean closed;
@@ -36,16 +37,13 @@ class MetalGpuBuffer extends GpuBuffer {
         this.cpuAccessible = isCpuAccessible(usage) || this.dynamic;
         this.resourceOptions = toMtlResourceOptions(usage);
         this.allocationSize = (size + 15L) & ~15L;
-        this.nativeHandle = MetalNativeBridge.metallum_create_buffer(device.metalDeviceHandle(), this.allocationSize, this.resourceOptions);
-        if (MetalNativeBridge.isNullHandle(this.nativeHandle)) {
-            throw new IllegalStateException("Failed to create Metal buffer");
-        }
+        this.nativeBuffer = device.metalDevice().newBuffer(this.allocationSize, this.resourceOptions);
 
         if (this.cpuAccessible) {
-            MemorySegment contents = MetalNativeBridge.metallum_get_buffer_contents(this.nativeHandle);
+            MemorySegment contents = this.nativeBuffer.contents();
             if (MetalNativeBridge.isNullHandle(contents)) {
-                MetalNativeBridge.metallum_release_object(this.nativeHandle);
-                this.nativeHandle = null;
+                MetalNativeBridge.metallum_release_object(this.nativeBuffer.handle());
+                this.nativeBuffer = null;
                 throw new IllegalStateException("MTLBuffer.contents returned null");
             }
 
@@ -55,14 +53,14 @@ class MetalGpuBuffer extends GpuBuffer {
         }
     }
 
-    MetalGpuBuffer(final MetalDevice device, @GpuBuffer.Usage final int usage, final long size, final @Nullable MemorySegment wrappedHandle) {
+    MetalGpuBuffer(final MetalDevice device, @GpuBuffer.Usage final int usage, final long size, final @Nullable MTLBuffer wrappedBuffer) {
         super(usage, size);
         this.device = device;
         this.cpuAccessible = false;
         this.dynamic = false;
         this.resourceOptions = 0L;
         this.allocationSize = size;
-        this.nativeHandle = wrappedHandle;
+        this.nativeBuffer = wrappedBuffer;
         this.storage = null;
     }
 
@@ -71,17 +69,22 @@ class MetalGpuBuffer extends GpuBuffer {
             throw new IllegalStateException("Buffer is not CPU-accessible");
         }
 
-        ByteBuffer duplicate = this.storage.duplicate().order(this.storage.order());
-        duplicate.position(Math.toIntExact(offset));
-        duplicate.limit(Math.toIntExact(offset + length));
-        return duplicate.slice().order(this.storage.order());
+        return storage.duplicate()
+                .position(Math.toIntExact(offset))
+                .limit(Math.toIntExact(offset + length))
+                .slice()
+                .order(this.storage.order());
+    }
+
+    MTLBuffer metalBuffer() {
+        if (this.nativeBuffer == null) {
+            throw new IllegalStateException("Native Metal buffer is closed");
+        }
+        return this.nativeBuffer;
     }
 
     MemorySegment nativeHandle() {
-        if (this.nativeHandle == null) {
-            throw new IllegalStateException("Native Metal buffer is closed");
-        }
-        return this.nativeHandle;
+        return metalBuffer().handle();
     }
 
     boolean isDynamic() {
@@ -103,14 +106,14 @@ class MetalGpuBuffer extends GpuBuffer {
         return this.storage.duplicate().order(this.storage.order());
     }
 
-    void swapBacking(final MemorySegment handle, final ByteBuffer storage) {
-        this.nativeHandle = handle;
+    void swapBacking(final MTLBuffer buffer, final ByteBuffer storage) {
+        this.nativeBuffer = buffer;
         this.storage = storage;
     }
 
     @Override
     public boolean isClosed() {
-        return this.closed || this.nativeHandle == null;
+        return this.closed || this.nativeBuffer == null;
     }
 
     @Override
@@ -120,9 +123,9 @@ class MetalGpuBuffer extends GpuBuffer {
         }
         this.closed = true;
         this.storage = null;
-        if (this.nativeHandle != null) {
-            MemorySegment handle = this.nativeHandle;
-            this.nativeHandle = null;
+        if (this.nativeBuffer != null) {
+            MemorySegment handle = this.nativeBuffer.handle();
+            this.nativeBuffer = null;
             this.device.queueResourceRelease(handle);
         }
     }

@@ -19,10 +19,7 @@ import org.jspecify.annotations.Nullable;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalDouble;
+import java.util.*;
 
 @Environment(EnvType.CLIENT)
 final class MetalCommandEncoder implements CommandEncoderBackend {
@@ -44,15 +41,12 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     private MTLCommandEncoder currentEncoder;
     private MemorySegment renderColorAttachment = MemorySegment.NULL;
     private MemorySegment renderDepthAttachment = MemorySegment.NULL;
-    private final Long2ObjectOpenHashMap<java.util.ArrayDeque<MemorySegment>> dynamicBackingPool = new Long2ObjectOpenHashMap<>();
+    private final Long2ObjectOpenHashMap<java.util.ArrayDeque<MTLBuffer>> dynamicBackingPool = new Long2ObjectOpenHashMap<>();
 
     MetalCommandEncoder(final MetalDevice device) {
         this.device = device;
         this.transientMemory = new MetalTransientMemory(device, this);
-        fence = MetalNativeBridge.metallum_create_fence(device.metalDeviceHandle());
-        if (MetalNativeBridge.isNullHandle(fence)) {
-            throw new IllegalStateException("Failed to allocate MTLFence");
-        }
+        fence = device.metalDevice().newFence();
         for (int slot = 0; slot < MAX_SUBMITS_IN_FLIGHT; slot++) {
             submitSemaphores[slot] = MetalNativeBridge.metallum_create_semaphore();
             if (MetalNativeBridge.isNullHandle(submitSemaphores[slot])) {
@@ -326,9 +320,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromBufferToBuffer(
-                stagingBuffer.nativeHandle(),
+                stagingBuffer.metalBuffer(),
                 staging.offset(),
-                buffer.nativeHandle(),
+                buffer.metalBuffer(),
                 destination.offset(),
                 length
         );
@@ -337,10 +331,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
     private void orphanWrite(final MetalGpuBuffer buffer, final long offset, final ByteBuffer data) {
         long size = buffer.allocationSize();
-        MemorySegment old = buffer.nativeHandle();
-        MemorySegment fresh = acquireDynamicBacking(size, buffer.resourceOptions());
-        ByteBuffer freshStorage = MetalNativeBridge.nativeByteBufferView(
-                MetalNativeBridge.metallum_get_buffer_contents(fresh), size).order(ByteOrder.nativeOrder());
+        MTLBuffer old = buffer.metalBuffer();
+        MTLBuffer fresh = acquireDynamicBacking(size, buffer.resourceOptions());
+        ByteBuffer freshStorage = MetalNativeBridge.nativeByteBufferView(fresh.contents(), size).order(ByteOrder.nativeOrder());
 
         if (offset != 0 || data.remaining() != buffer.size()) {
             ByteBuffer previous = buffer.currentStorage();
@@ -356,20 +349,16 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         recycleDynamicBacking(old, size);
     }
 
-    private MemorySegment acquireDynamicBacking(final long size, final long resourceOptions) {
-        java.util.ArrayDeque<MemorySegment> bucket = dynamicBackingPool.get(size);
+    private MTLBuffer acquireDynamicBacking(final long size, final long resourceOptions) {
+        ArrayDeque<MTLBuffer> bucket = dynamicBackingPool.get(size);
         if (bucket != null && !bucket.isEmpty()) {
             return bucket.pop();
         }
-        MemorySegment handle = MetalNativeBridge.metallum_create_buffer(device.metalDeviceHandle(), size, resourceOptions);
-        if (MetalNativeBridge.isNullHandle(handle)) {
-            throw new IllegalStateException("Failed to create dynamic backing buffer");
-        }
-        return handle;
+        return device.metalDevice().newBuffer(size, resourceOptions);
     }
 
-    private void recycleDynamicBacking(final MemorySegment handle, final long size) {
-        queueForDestroy(() -> dynamicBackingPool.computeIfAbsent(size, k -> new java.util.ArrayDeque<>()).push(handle));
+    private void recycleDynamicBacking(final MTLBuffer buffer, final long size) {
+        queueForDestroy(() -> dynamicBackingPool.computeIfAbsent(size, _ -> new ArrayDeque<>()).push(buffer));
     }
 
     @Override
@@ -378,9 +367,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MetalGpuBuffer targetBuffer = (MetalGpuBuffer) target.buffer();
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromBufferToBuffer(
-                sourceBuffer.nativeHandle(),
+                sourceBuffer.metalBuffer(),
                 source.offset(),
-                targetBuffer.nativeHandle(),
+                targetBuffer.metalBuffer(),
                 target.offset(),
                 source.length()
         );
@@ -408,17 +397,17 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromBufferToTexture(
-                ((MetalGpuBuffer) slice.buffer()).nativeHandle(),
+                ((MetalGpuBuffer) slice.buffer()).metalBuffer(),
                 slice.offset(),
-                metalDst.nativeHandle(),
-                mipLevel,
-                depthOrLayer,
-                destX,
-                destY,
+                rowBytes,
+                bytesPerImage,
                 width,
                 height,
-                rowBytes,
-                bytesPerImage
+                metalDst.nativeHandle(),
+                depthOrLayer,
+                mipLevel,
+                destX,
+                destY
         );
         endEncoder();
     }
@@ -447,17 +436,17 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromBufferToTexture(
-                ((MetalGpuBuffer) source.buffer()).nativeHandle(),
+                ((MetalGpuBuffer) source.buffer()).metalBuffer(),
                 source.offset() + skipBytes,
-                metalDst.nativeHandle(),
-                mipLevel,
-                arrayLayer,
-                destinationX,
-                destinationY,
+                rowBytes,
+                rowBytes * sourceHeight,
                 copyWidth,
                 copyHeight,
-                rowBytes,
-                rowBytes * sourceHeight
+                metalDst.nativeHandle(),
+                arrayLayer,
+                mipLevel,
+                destinationX,
+                destinationY
         );
         endEncoder();
     }
@@ -489,14 +478,14 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromTextureToBuffer(
                 texture.nativeHandle(),
-                buffer.nativeHandle(),
-                offset,
-                mipLevel,
                 0,
+                mipLevel,
                 x,
                 y,
                 width,
                 height,
+                buffer.metalBuffer(),
+                offset,
                 rowBytes,
                 bytesPerImage
         );
@@ -524,14 +513,17 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromTextureToTexture(
                 srcTexture.nativeHandle(),
-                dstTexture.nativeHandle(),
+                0,
                 mipLevel,
                 sourceX,
                 sourceY,
-                destX,
-                destY,
                 width,
-                height
+                height,
+                dstTexture.nativeHandle(),
+                0,
+                mipLevel,
+                destX,
+                destY
         );
         endEncoder();
     }
@@ -549,10 +541,10 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         if (submitIndex == currentSubmitIndex) {
             throw new IllegalStateException("Cannot wait on a fence for the current submit");
         }
-        for (InFlight f : inFlight) {
-            if (f != null && f.index == submitIndex) {
-                return MetalNativeBridge.metallum_semaphore_wait(f.completedSemaphore, Math.max(timeoutMs, 0L)) == 0;
-            }
+        int slot = (int) (submitIndex % MAX_SUBMITS_IN_FLIGHT);
+        InFlight f = inFlight[slot];
+        if (f != null && f.index == submitIndex) {
+            return MetalNativeBridge.metallum_semaphore_wait(f.completedSemaphore, Math.max(timeoutMs, 0L)) == 0;
         }
         return true;
     }
@@ -580,9 +572,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         transientMemory.close();
         device.queueResourceRelease(fence);
         destroyQueue.close();
-        for (java.util.ArrayDeque<MemorySegment> bucket : dynamicBackingPool.values()) {
-            for (MemorySegment handle : bucket) {
-                MetalNativeBridge.metallum_release_object(handle);
+        for (java.util.ArrayDeque<MTLBuffer> bucket : dynamicBackingPool.values()) {
+            for (MTLBuffer buffer : bucket) {
+                MetalNativeBridge.metallum_release_object(buffer.handle());
             }
         }
         dynamicBackingPool.clear();

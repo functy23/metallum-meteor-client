@@ -1,6 +1,7 @@
 package com.metallum.client.metal.render.mtl;
 
-import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.objc.Msg;
+import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
@@ -8,6 +9,8 @@ import java.lang.foreign.MemorySegment;
 
 @Environment(EnvType.CLIENT)
 public abstract class MTLCommandEncoder {
+    private static final Msg END_ENCODING = Msg.ofVoid("endEncoding");
+
     MemorySegment handle;
 
     MTLCommandEncoder(final MemorySegment handle) {
@@ -15,18 +18,18 @@ public abstract class MTLCommandEncoder {
     }
 
     public MemorySegment handle() {
-        if (MetalNativeBridge.isNullHandle(this.handle)) {
+        if (ObjC.isNil(this.handle)) {
             throw new IllegalStateException(getClass().getSimpleName() + " is closed");
         }
         return this.handle;
     }
 
     public void endEncoding() {
-        if (MetalNativeBridge.isNullHandle(this.handle)) {
+        if (ObjC.isNil(this.handle)) {
             return;
         }
-        MetalNativeBridge.MTLCommandEncoder_endEncoding(this.handle);
-        MetalNativeBridge.metallum_release_object(this.handle);
+        END_ENCODING.send(this.handle);
+        ObjC.release(this.handle);
         this.handle = MemorySegment.NULL;
     }
 }

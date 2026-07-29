@@ -24,7 +24,9 @@ import org.lwjgl.vulkan.VkDrawIndexedIndirectCommand;
 import org.lwjgl.vulkan.VkDrawIndirectCommand;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.IntBuffer;
+import java.nio.ShortBuffer;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.function.Supplier;
@@ -217,18 +219,19 @@ final class MetalRenderPass implements RenderPassBackend {
         MTLRenderCommandEncoder enc = renderEncoder();
         bindDrawState(enc);
 
-        MetalNativeBridge.MTLRenderCommandEncoder_multiDrawIndexed(
-                enc.handle(),
-                primitiveType.value,
-                indexType.value,
-                nativeIndexBuffer.nativeHandle(),
-                MemorySegment.ofAddress(org.lwjgl.system.MemoryUtil.memAddress(firstIndexOffsets)),
-                MemorySegment.ofAddress(org.lwjgl.system.MemoryUtil.memAddress(indexCounts)),
-                MemorySegment.ofAddress(org.lwjgl.system.MemoryUtil.memAddress(vertexOffsets)),
-                drawCount,
-                1L,
-                0L
-        );
+        MTLBuffer indexBufferHandle = nativeIndexBuffer.metalBuffer();
+        MemorySegment offsets = MemorySegment.ofAddress(org.lwjgl.system.MemoryUtil.memAddress(firstIndexOffsets)).reinterpret(drawCount * 8L);
+        MemorySegment counts = MemorySegment.ofAddress(org.lwjgl.system.MemoryUtil.memAddress(indexCounts)).reinterpret(drawCount * 4L);
+        MemorySegment vertices = MemorySegment.ofAddress(org.lwjgl.system.MemoryUtil.memAddress(vertexOffsets)).reinterpret(drawCount * 4L);
+        for (int i = 0; i < drawCount; i++) {
+            int indexCount = counts.get(ValueLayout.JAVA_INT, i * 4L);
+            if (indexCount <= 0) {
+                continue;
+            }
+            long firstIndexOffset = offsets.get(ValueLayout.JAVA_LONG, i * 8L);
+            int baseVertex = vertices.get(ValueLayout.JAVA_INT, i * 4L);
+            enc.drawIndexedPrimitives(primitiveType, indexCount, indexType, indexBufferHandle, firstIndexOffset, 1, baseVertex, 0);
+        }
     }
 
     @Override
@@ -242,15 +245,13 @@ final class MetalRenderPass implements RenderPassBackend {
         MTLRenderCommandEncoder enc = renderEncoder();
         bindDrawState(enc);
 
-        enc.drawIndexedPrimitivesIndirect(
-                primitiveType,
-                indexType,
-                nativeIndexBuffer.nativeHandle(),
-                ((MetalGpuBuffer) commands.buffer()).nativeHandle(),
-                commands.offset(),
-                drawCount,
-                VkDrawIndexedIndirectCommand.SIZEOF
-        );
+        MTLBuffer indexBufferHandle = nativeIndexBuffer.metalBuffer();
+        MTLBuffer indirectBuffer = ((MetalGpuBuffer) commands.buffer()).metalBuffer();
+        long indirectOffset = commands.offset();
+        for (int i = 0; i < drawCount; i++) {
+            enc.drawIndexedPrimitivesIndirect(primitiveType, indexType, indexBufferHandle, indirectBuffer, indirectOffset);
+            indirectOffset += VkDrawIndexedIndirectCommand.SIZEOF;
+        }
     }
 
     @Override
@@ -317,13 +318,12 @@ final class MetalRenderPass implements RenderPassBackend {
         MTLRenderCommandEncoder enc = renderEncoder();
         bindDrawState(enc);
 
-        enc.drawPrimitivesIndirect(
-                primitiveType,
-                ((MetalGpuBuffer) commands.buffer()).nativeHandle(),
-                commands.offset(),
-                drawCount,
-                VkDrawIndirectCommand.SIZEOF
-        );
+        MTLBuffer indirectBuffer = ((MetalGpuBuffer) commands.buffer()).metalBuffer();
+        long indirectOffset = commands.offset();
+        for (int i = 0; i < drawCount; i++) {
+            enc.drawPrimitivesIndirect(primitiveType, indirectBuffer, indirectOffset);
+            indirectOffset += VkDrawIndirectCommand.SIZEOF;
+        }
     }
 
     @Override
@@ -398,7 +398,7 @@ final class MetalRenderPass implements RenderPassBackend {
 
             MetalGpuBuffer nativeVertexBuffer = (MetalGpuBuffer) vertexBuffer.buffer();
             int metalSlot = firstSlot + slot;
-            enc.setBuffer(nativeVertexBuffer.nativeHandle(), vertexBuffer.offset(), metalSlot, MetalCompiledRenderPipeline.STAGE_VERTEX);
+            enc.setVertexBuffer(nativeVertexBuffer.metalBuffer(), vertexBuffer.offset(), metalSlot);
         }
     }
 
@@ -409,14 +409,14 @@ final class MetalRenderPass implements RenderPassBackend {
 
         try (GpuBufferSlice.MappedView mapped = commandEncoder.transientMemory().allocateGpuMapped((long) indexCount * fanIndexType.bytes, fanIndexType.bytes, GpuBuffer.USAGE_INDEX)) {
             if (fanIndexType == MTLIndexType.UInt16) {
-                java.nio.ShortBuffer indices = mapped.data().asShortBuffer();
+                ShortBuffer indices = mapped.data().asShortBuffer();
                 for (int i = 0; i < triangleCount; i++) {
                     indices.put((short) 0);
                     indices.put((short) (i + 1));
                     indices.put((short) (i + 2));
                 }
             } else {
-                java.nio.IntBuffer indices = mapped.data().asIntBuffer();
+                IntBuffer indices = mapped.data().asIntBuffer();
                 for (int i = 0; i < triangleCount; i++) {
                     indices.put(0);
                     indices.put(i + 1);
@@ -424,7 +424,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 }
             }
             GpuBufferSlice slice = mapped.slice();
-            encoder.drawIndexedPrimitives(MTLPrimitiveType.Triangle, indexCount, fanIndexType, ((MetalGpuBuffer) slice.buffer()).nativeHandle(), slice.offset(), Math.max(1, instanceCount), firstVertex, baseInstance);
+            encoder.drawIndexedPrimitives(MTLPrimitiveType.Triangle, indexCount, fanIndexType, ((MetalGpuBuffer) slice.buffer()).metalBuffer(), slice.offset(), Math.max(1, instanceCount), firstVertex, baseInstance);
         }
     }
 
@@ -442,24 +442,64 @@ final class MetalRenderPass implements RenderPassBackend {
 
         long indexOffsetBytes = (long) firstIndex * indexType.bytes;
         if (primitiveType == MTLPrimitiveType.TriangleFan) {
-            long fanSize = Math.multiplyExact(Math.multiplyExact((long) indexCount - 2L, 3L), Integer.BYTES);
-            try (GpuBufferSlice.MappedView mapped = commandEncoder.transientMemory().allocateGpuMapped(fanSize, Integer.BYTES, GpuBuffer.USAGE_INDEX)) {
+            if (indexCount < 3) {
+                return;
+            }
+            int generatedIndexCount = (indexCount - 2) * 3;
+            try (GpuBufferSlice.MappedView mapped = commandEncoder.transientMemory().allocateGpuMapped((long) generatedIndexCount * Integer.BYTES, Integer.BYTES, GpuBuffer.USAGE_INDEX)) {
+                expandTriangleFan(mapped.data().asIntBuffer(), nativeIndexBuffer.metalBuffer(), indexOffsetBytes, indexCount, indexType);
                 GpuBufferSlice slice = mapped.slice();
-                enc.drawIndexedPrimitivesTriangleFan(
-                        nativeIndexBuffer.nativeHandle(),
-                        ((MetalGpuBuffer) slice.buffer()).nativeHandle(),
-                        slice.offset(),
-                        indexType.value,
-                        indexOffsetBytes,
-                        indexCount,
-                        baseVertex,
-                        instanceCount,
-                        baseInstance
-                );
+                enc.drawIndexedPrimitives(MTLPrimitiveType.Triangle, generatedIndexCount, MTLIndexType.UInt32, ((MetalGpuBuffer) slice.buffer()).metalBuffer(), slice.offset(), instanceCount, baseVertex, baseInstance);
             }
         } else {
-            enc.drawIndexedPrimitives(primitiveType, indexCount, indexType, nativeIndexBuffer.nativeHandle(), indexOffsetBytes, instanceCount, baseVertex, baseInstance);
+            enc.drawIndexedPrimitives(primitiveType, indexCount, indexType, nativeIndexBuffer.metalBuffer(), indexOffsetBytes, instanceCount, baseVertex, baseInstance);
         }
+    }
+
+    private static void expandTriangleFan(final IntBuffer out, final MTLBuffer indexBuffer, final long indexOffsetBytes, final int indexCount, final MTLIndexType indexType) {
+        MemorySegment indices = indexBuffer.contents()
+                .reinterpret(indexOffsetBytes + (long) indexCount * indexType.bytes)
+                .asSlice(indexOffsetBytes);
+        int center = readIndex(indices, 0, indexType);
+        for (int i = 1; i < indexCount - 1; i++) {
+            out.put(center).put(readIndex(indices, i, indexType)).put(readIndex(indices, i + 1, indexType));
+        }
+    }
+
+    private static void bindBuffer(final MTLRenderCommandEncoder enc, final MTLBuffer buffer, final long offset, final long index, final int stageMask) {
+        if ((stageMask & MetalCompiledRenderPipeline.STAGE_VERTEX) != 0) {
+            enc.setVertexBuffer(buffer, offset, index);
+        }
+        if ((stageMask & MetalCompiledRenderPipeline.STAGE_FRAGMENT) != 0) {
+            enc.setFragmentBuffer(buffer, offset, index);
+        }
+    }
+
+    private static void bindTexture(final MTLRenderCommandEncoder enc, final MemorySegment texture, final long index, final int stageMask) {
+        if ((stageMask & MetalCompiledRenderPipeline.STAGE_VERTEX) != 0) {
+            enc.setVertexTexture(texture, index);
+        }
+        if ((stageMask & MetalCompiledRenderPipeline.STAGE_FRAGMENT) != 0) {
+            enc.setFragmentTexture(texture, index);
+        }
+    }
+
+    private static void bindTextureAndSampler(final MTLRenderCommandEncoder enc, final MemorySegment texture, final MemorySegment sampler, final long index, final int stageMask) {
+        if ((stageMask & MetalCompiledRenderPipeline.STAGE_VERTEX) != 0) {
+            enc.setVertexTexture(texture, index);
+            enc.setVertexSamplerState(sampler, index);
+        }
+        if ((stageMask & MetalCompiledRenderPipeline.STAGE_FRAGMENT) != 0) {
+            enc.setFragmentTexture(texture, index);
+            enc.setFragmentSamplerState(sampler, index);
+        }
+    }
+
+    private static int readIndex(final MemorySegment indices, final int index, final MTLIndexType indexType) {
+        if (indexType == MTLIndexType.UInt16) {
+            return Short.toUnsignedInt(indices.get(ValueLayout.JAVA_SHORT_UNALIGNED, index * 2L));
+        }
+        return indices.get(ValueLayout.JAVA_INT_UNALIGNED, index * 4L);
     }
 
     private void bindDrawState(final MTLRenderCommandEncoder enc) {
@@ -574,7 +614,7 @@ final class MetalRenderPass implements RenderPassBackend {
 
             MetalGpuTextureView textureView = (MetalGpuTextureView) textureBinding.textureView();
             MetalGpuSampler sampler = (MetalGpuSampler) textureBinding.sampler();
-            enc.setTextureAndSampler(textureView.nativeHandle(), sampler.nativeHandle(), binding.bindingIndex(), binding.stageMask());
+            bindTextureAndSampler(enc, textureView.nativeHandle(), sampler.nativeHandle(), binding.bindingIndex(), binding.stageMask());
             return;
         }
 
@@ -592,7 +632,7 @@ final class MetalRenderPass implements RenderPassBackend {
         }
 
         MetalGpuBuffer uniformBuffer = (MetalGpuBuffer) uniformSlice.buffer();
-        enc.setBuffer(uniformBuffer.nativeHandle(), uniformSlice.offset(), binding.bindingIndex(), binding.stageMask());
+        bindBuffer(enc, uniformBuffer.metalBuffer(), uniformSlice.offset(), binding.bindingIndex(), binding.stageMask());
     }
 
     private void pushTexelBufferDescriptor(final MTLRenderCommandEncoder enc, final MetalCompiledRenderPipeline.ResourceBinding binding) {
@@ -629,7 +669,7 @@ final class MetalRenderPass implements RenderPassBackend {
             throw new IllegalStateException("Failed to create Metal texel buffer texture for " + binding.name());
         }
 
-        enc.setTexture(texelTexture, binding.bindingIndex(), binding.stageMask());
+        bindTexture(enc, texelTexture, binding.bindingIndex(), binding.stageMask());
         commandEncoder.queueForDestroy(() -> MetalNativeBridge.metallum_release_object(texelTexture));
     }
 

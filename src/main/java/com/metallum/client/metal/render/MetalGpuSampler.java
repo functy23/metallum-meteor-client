@@ -1,7 +1,7 @@
 package com.metallum.client.metal.render;
 
-import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.metallum.client.metal.render.mtl.MTLSamplerAddressMode;
+import com.metallum.client.metal.render.mtl.MTLSamplerDescriptor;
 import com.metallum.client.metal.render.mtl.MTLSamplerMinMagFilter;
 import com.metallum.client.metal.render.mtl.MTLSamplerMipFilter;
 import com.mojang.blaze3d.textures.AddressMode;
@@ -36,16 +36,18 @@ final class MetalGpuSampler extends GpuSampler {
             final OptionalDouble maxLod
     ) {
         this.device = device;
-        this.nativeHandle = MetalNativeBridge.metallum_create_sampler(
-                device.metalDeviceHandle(),
-                MTLSamplerAddressMode.from(addressModeU),
-                MTLSamplerAddressMode.from(addressModeV),
-                MTLSamplerMinMagFilter.from(minFilter),
-                MTLSamplerMinMagFilter.from(magFilter),
-                toMtlMipFilter(maxLod),
-                Math.max(1, maxAnisotropy),
-                toMtlMaxLodClamp(maxLod)
-        );
+        try (MTLSamplerDescriptor descriptor = MTLSamplerDescriptor.create()) {
+            descriptor.minFilter(MTLSamplerMinMagFilter.from(minFilter));
+            descriptor.magFilter(MTLSamplerMinMagFilter.from(magFilter));
+            descriptor.mipFilter(toMtlMipFilter(maxLod));
+            descriptor.sAddressMode(MTLSamplerAddressMode.from(addressModeU));
+            descriptor.tAddressMode(MTLSamplerAddressMode.from(addressModeV));
+            descriptor.maxAnisotropy(Math.max(1, maxAnisotropy));
+            descriptor.lodMinClamp(0.0f);
+            double lodMaxClamp = toMtlMaxLodClamp(maxLod);
+            descriptor.lodMaxClamp(lodMaxClamp >= 0.0 && Double.isFinite(lodMaxClamp) ? (float) lodMaxClamp : Float.MAX_VALUE);
+            this.nativeHandle = device.metalDevice().newSamplerState(descriptor);
+        }
         this.addressModeU = addressModeU;
         this.addressModeV = addressModeV;
         this.minFilter = minFilter;

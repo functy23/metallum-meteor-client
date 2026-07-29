@@ -94,11 +94,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
             this.depthBiasConstant = depthStencilState.depthBiasConstant();
         }
 
-        this.depthStencilState = MetalNativeBridge.MTLDevice_makeDepthStencilState(
-                device.metalDeviceHandle(),
-                depthCompareOp,
-                depthWrite
-        );
+        this.depthStencilState = device.depthStencilState(depthCompareOp, depthWrite != 0);
 
         var colorTarget = info.getColorTargetState();
         MTLPixelFormat colorFormat = colorTarget != null ? MTLPixelFormat.from(colorTarget.format()) : MTLPixelFormat.RGBA8Unorm;

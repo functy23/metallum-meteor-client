@@ -2,6 +2,10 @@ package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.metallum.client.metal.render.mtl.MTLCommandQueue;
+import com.metallum.client.metal.render.mtl.MTLCompareFunction;
+import com.metallum.client.metal.render.mtl.MTLDepthStencilDescriptor;
+import com.metallum.client.metal.render.mtl.MTLDevice;
+import com.metallum.objc.ObjC;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.pipeline.CompiledRenderPipeline;
@@ -33,6 +37,7 @@ final class MetalDevice implements GpuDeviceBackend {
     private static final Pattern BLOCK_COMMENTS = Pattern.compile("(?s)/\\*.*?\\*/");
     private static final Pattern LINE_COMMENTS = Pattern.compile("(?m)//[^\\n]*");
     private final MemorySegment metalDeviceHandle;
+    private final MTLDevice metalDevice;
     private final MemorySegment metalLayer;
     private final MemorySegment cocoaView;
     private final GpuDebugOptions debugOptions;
@@ -42,6 +47,7 @@ final class MetalDevice implements GpuDeviceBackend {
     private final Map<RenderPipeline, MetalCompiledRenderPipeline> compiledPipelines = new IdentityHashMap<>();
     private final Map<ShaderCompilationKey, IntermediaryShaderModule> shaderCache = new HashMap<>();
     private final Map<MslFunctionKey, MemorySegment> functionCache = new HashMap<>();
+    private final Map<Long, MemorySegment> depthStencilStates = new HashMap<>();
     private ShaderSource activeShaderSource;
 
     MetalDevice(
@@ -55,10 +61,11 @@ final class MetalDevice implements GpuDeviceBackend {
         this.activeShaderSource = defaultShaderSource;
         this.debugOptions = debugOptions;
         this.metalDeviceHandle = metalDeviceHandle;
+        this.metalDevice = new MTLDevice(metalDeviceHandle);
         this.metalLayer = metalLayer;
         this.cocoaView = cocoaView;
         MetalNativeBridge.metallum_set_debug_labels_enabled(this.useLabels());
-        this.commandQueue = MTLCommandQueue.create(metalDeviceHandle);
+        this.commandQueue = this.metalDevice.newCommandQueue();
         MetalNativeBridge.metallum_init_pipelines(metalDeviceHandle);
         this.commandEncoder = new MetalCommandEncoder(this);
         this.deviceInfo = buildDeviceInfo(deviceName);
@@ -182,7 +189,11 @@ final class MetalDevice implements GpuDeviceBackend {
         } catch (Throwable ignored) {
         }
         this.commandQueue.close();
-        MetalNativeBridge.metallum_release_object(this.metalDeviceHandle);
+        for (MemorySegment state : depthStencilStates.values()) {
+            ObjC.release(state);
+        }
+        depthStencilStates.clear();
+        ObjC.release(this.metalDeviceHandle);
     }
 
     @Override
@@ -202,6 +213,25 @@ final class MetalDevice implements GpuDeviceBackend {
 
     MemorySegment metalDeviceHandle() {
         return this.metalDeviceHandle;
+    }
+
+    MTLDevice metalDevice() {
+        return this.metalDevice;
+    }
+
+    MemorySegment depthStencilState(final MTLCompareFunction compareFunction, final boolean writeDepth) {
+        long key = (compareFunction.value << 1) | (writeDepth ? 1L : 0L);
+        MemorySegment cached = depthStencilStates.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        try (MTLDepthStencilDescriptor descriptor = MTLDepthStencilDescriptor.create()) {
+            descriptor.depthCompareFunction(compareFunction);
+            descriptor.depthWriteEnabled(writeDepth);
+            MemorySegment state = metalDevice.newDepthStencilState(descriptor);
+            depthStencilStates.put(key, state);
+            return state;
+        }
     }
 
     void waitForSubmittedGpuWork() {
@@ -256,7 +286,7 @@ final class MetalDevice implements GpuDeviceBackend {
         Set<String> underlyingExtensions = Set.of("CAMetalLayer", "MTLDevice");
         String osVersion = System.getProperty("os.version", "").trim();
         String driverDescription = "macOS " + osVersion;
-        long maxMemoryAllocationSize = MetalNativeBridge.MTLDevice_maxMemoryAllocationSize(metalDeviceHandle);
+        long maxMemoryAllocationSize = Math.min(metalDevice.maxBufferLength(), metalDevice.recommendedMaxWorkingSetSize());
         return new DeviceInfo(
                 deviceName,
                 "Apple",

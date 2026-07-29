@@ -1,6 +1,7 @@
 package com.metallum.client.metal.render.mtl;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.jspecify.annotations.Nullable;
@@ -11,31 +12,23 @@ import java.lang.foreign.MemorySegment;
 public final class MTLCommandQueue {
     private MemorySegment handle;
 
-    private MTLCommandQueue(final MemorySegment handle) {
+    MTLCommandQueue(final MemorySegment handle) {
         this.handle = handle;
-    }
-
-    public static MTLCommandQueue create(final MemorySegment device) {
-        MemorySegment handle = MetalNativeBridge.MTLDevice_makeCommandQueue(device);
-        if (MetalNativeBridge.isNullHandle(handle)) {
-            throw new IllegalStateException("Failed to create Metal command queue");
-        }
-        return new MTLCommandQueue(handle);
     }
 
     public MTLCommandBuffer makeCommandBuffer(@Nullable final String label) {
         MemorySegment commandBuffer = MetalNativeBridge.MTLCommandQueue_makeCommandBuffer(handle, label);
-        if (MetalNativeBridge.isNullHandle(commandBuffer)) {
+        if (ObjC.isNil(commandBuffer)) {
             throw new IllegalStateException("Failed to create MTLCommandBuffer");
         }
         return new MTLCommandBuffer(commandBuffer);
     }
 
     public void close() {
-        if (MetalNativeBridge.isNullHandle(handle)) {
+        if (ObjC.isNil(handle)) {
             return;
         }
-        MetalNativeBridge.metallum_release_object(handle);
+        ObjC.release(handle);
         handle = MemorySegment.NULL;
     }
 }
