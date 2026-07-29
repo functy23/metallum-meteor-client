@@ -93,20 +93,19 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
     @Override
     public void submit() {
-        if (commandBuffer == null) {
-            return;
+        InFlight toClose = null;
+        if (commandBuffer != null) {
+            submitRenderPass();
+            endEncoder();
+
+            int slot = (int) (currentSubmitIndex % MAX_SUBMITS_IN_FLIGHT);
+            MemorySegment completedSemaphore = submitSemaphores[slot];
+            commandBuffer.commitWithSignal(completedSemaphore);
+
+            toClose = inFlight[slot];
+            inFlight[slot] = new InFlight(currentSubmitIndex, commandBuffer, completedSemaphore);
+            commandBuffer = null;
         }
-
-        submitRenderPass();
-        endEncoder();
-
-        int slot = (int) (currentSubmitIndex % MAX_SUBMITS_IN_FLIGHT);
-        MemorySegment completedSemaphore = submitSemaphores[slot];
-        commandBuffer.commitWithSignal(completedSemaphore);
-
-        InFlight toClose = inFlight[slot];
-        inFlight[slot] = new InFlight(currentSubmitIndex, commandBuffer, completedSemaphore);
-        commandBuffer = null;
         currentSubmitIndex++;
 
         if (!awaitSubmitCompletion(currentSubmitIndex - MAX_SUBMITS_IN_FLIGHT, 5000L)) {
@@ -539,6 +538,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
     boolean awaitSubmitCompletion(final long submitIndex, final long timeoutMs) {
         if (submitIndex == currentSubmitIndex) {
+            if (timeoutMs == 0L) {
+                return false;
+            }
             throw new IllegalStateException("Cannot wait on a fence for the current submit");
         }
         int slot = (int) (submitIndex % MAX_SUBMITS_IN_FLIGHT);
