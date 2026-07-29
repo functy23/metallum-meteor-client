@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     steps:
       - name: checkout repository
         uses: actions/checkout@v6
@@ -30,7 +30,7 @@ jobs:
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
       - name: build
-        run: ./gradlew buildMacNative build
+        run: ./gradlew build
       - name: capture build artifacts
         uses: actions/upload-artifact@v7
         with:

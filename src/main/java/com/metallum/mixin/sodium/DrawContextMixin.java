@@ -1,6 +1,6 @@
 package com.metallum.mixin.sodium;
 
-import com.metallum.client.metal.render.MetalDrawContext;
+import com.metallum.render.MetalDrawContext;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.caffeinemc.mods.sodium.client.gpu.device.context.DrawContext;
 import org.spongepowered.asm.mixin.Mixin;

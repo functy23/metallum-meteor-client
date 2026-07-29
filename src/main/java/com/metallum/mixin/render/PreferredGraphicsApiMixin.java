@@ -1,6 +1,6 @@
 package com.metallum.mixin.render;
 
-import com.metallum.client.metal.render.MetalBackend;
+import com.metallum.render.MetalBackend;
 import com.mojang.blaze3d.opengl.GlBackend;
 import com.mojang.blaze3d.systems.GpuBackend;
 import com.mojang.blaze3d.vulkan.VulkanBackend;

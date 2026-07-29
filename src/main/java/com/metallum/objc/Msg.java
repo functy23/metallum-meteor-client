@@ -182,9 +182,97 @@ public record Msg(String name, MemorySegment sel, MethodHandle handle) {
         }
     }
 
+    public MemorySegment sendPtr(MemorySegment self, MemorySegment a, MemorySegment b) {
+        try {
+            return (MemorySegment) handle.invokeExact(self, sel, a, b);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public MemorySegment sendPtr(MemorySegment self, MemorySegment a, MemorySegment b, MemorySegment c) {
+        try {
+            return (MemorySegment) handle.invokeExact(self, sel, a, b, c);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public MemorySegment sendPtr(MemorySegment self, long a) {
+        try {
+            return (MemorySegment) handle.invokeExact(self, sel, a);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
     public long sendLong(MemorySegment self) {
         try {
             return (long) handle.invokeExact(self, sel);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public long sendLong(MemorySegment self, long a) {
+        try {
+            return (long) handle.invokeExact(self, sel, a);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public double sendDouble(MemorySegment self) {
+        try {
+            return (double) handle.invokeExact(self, sel);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public void send(MemorySegment self, double a) {
+        try {
+            handle.invokeExact(self, sel, a);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public void send(MemorySegment self, double a, double b) {
+        try {
+            handle.invokeExact(self, sel, a, b);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public void send(MemorySegment self, double a, double b, double c, double d) {
+        try {
+            handle.invokeExact(self, sel, a, b, c, d);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public MemorySegment sendPtr(MemorySegment self, MemorySegment a, long b, long c) {
+        try {
+            return (MemorySegment) handle.invokeExact(self, sel, a, b, c);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public MemorySegment sendPtr(MemorySegment self, long a, long b, long c, long d) {
+        try {
+            return (MemorySegment) handle.invokeExact(self, sel, a, b, c, d);
+        } catch (Throwable throwable) {
+            throw fail(throwable);
+        }
+    }
+
+    public MemorySegment sendPtr(MemorySegment self, long a, long b, long c, long d, long e, long f) {
+        try {
+            return (MemorySegment) handle.invokeExact(self, sel, a, b, c, d, e, f);
         } catch (Throwable throwable) {
             throw fail(throwable);
         }

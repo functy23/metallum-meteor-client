@@ -88,6 +88,16 @@ public final class ObjC {
         return segment == null || segment.address() == 0L;
     }
 
+    public static java.nio.ByteBuffer byteBufferView(MemorySegment pointer, long byteSize) {
+        if (isNil(pointer)) {
+            throw new IllegalArgumentException("Cannot create a ByteBuffer view for a null native pointer");
+        }
+        if (byteSize < 0L) {
+            throw new IllegalArgumentException("Byte size must be non-negative");
+        }
+        return MemorySegment.ofAddress(pointer.address()).reinterpret(byteSize).asByteBuffer();
+    }
+
     public static MemorySegment orNil(MemorySegment segment) {
         return isNil(segment) ? MemorySegment.NULL : segment;
     }
