@@ -4,6 +4,8 @@ import com.metallum.objc.Msg;
 import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Vector4fc;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 
 import java.lang.foreign.MemorySegment;
@@ -127,13 +129,8 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
             final MemorySegment depthTexture,
             final double viewportWidth,
             final double viewportHeight,
-            final boolean clearColorEnabled,
-            final float clearColorRed,
-            final float clearColorGreen,
-            final float clearColorBlue,
-            final float clearColorAlpha,
-            final boolean clearDepthEnabled,
-            final double clearDepth
+            @Nullable final Vector4fc clearColor,
+            @Nullable final Double clearDepth
     ) {
         MTLBuiltinPipelines.clearDraw(
                 this,
@@ -141,12 +138,7 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
                 depthTexture,
                 viewportWidth,
                 viewportHeight,
-                clearColorEnabled,
-                clearColorRed,
-                clearColorGreen,
-                clearColorBlue,
-                clearColorAlpha,
-                clearDepthEnabled,
+                clearColor,
                 clearDepth
         );
     }

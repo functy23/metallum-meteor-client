@@ -278,7 +278,7 @@ final class MetalDevice implements GpuDeviceBackend {
 
     private DeviceInfo buildDeviceInfo(final String deviceName) {
         DeviceType type = DeviceType.INTEGRATED;
-        Set<String> underlyingExtensions = Set.of("CAMetalLayer", "MTLDevice");
+        Set<String> extensions = Set.of();
         String osVersion = System.getProperty("os.version", "").trim();
         String driverDescription = "macOS " + osVersion;
         long maxMemoryAllocationSize = Math.min(metalDevice.maxBufferLength(), metalDevice.recommendedMaxWorkingSetSize());
@@ -291,7 +291,7 @@ final class MetalDevice implements GpuDeviceBackend {
                 1.0F,
                 new DeviceLimits(16, 256, 16384, maxMemoryAllocationSize, 0, 1),
                 new DeviceFeatures(false, false, true, true, true, false, true),
-                underlyingExtensions,
+                extensions,
                 new HintsAndWorkarounds(false, false),
                 type
         );

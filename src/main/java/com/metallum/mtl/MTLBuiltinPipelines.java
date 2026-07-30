@@ -4,6 +4,8 @@ import com.metallum.objc.AutoreleasePool;
 import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Vector4fc;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 
 import java.lang.foreign.MemorySegment;
@@ -136,13 +138,8 @@ public final class MTLBuiltinPipelines {
             final MemorySegment depthTexture,
             final double viewportWidth,
             final double viewportHeight,
-            final boolean clearColorEnabled,
-            final float clearRed,
-            final float clearGreen,
-            final float clearBlue,
-            final float clearAlpha,
-            final boolean clearDepthEnabled,
-            final double clearDepth
+            @Nullable final Vector4fc clearColor,
+            @Nullable final Double clearDepth
     ) {
         try (AutoreleasePool _ = AutoreleasePool.push()) {
             MemorySegment sizeTexture = ObjC.isNil(colorTexture) ? depthTexture : colorTexture;
@@ -152,13 +149,13 @@ public final class MTLBuiltinPipelines {
 
             long colorFormat = ObjC.isNil(colorTexture) ? MTLPixelFormat.Invalid.value : MTLTexture.pixelFormat(colorTexture);
             long depthFormat = ObjC.isNil(depthTexture) ? MTLPixelFormat.Invalid.value : MTLTexture.pixelFormat(depthTexture);
-            MemorySegment pipeline = ensureClearPipeline(colorFormat, depthFormat, clearColorEnabled);
+            MemorySegment pipeline = ensureClearPipeline(colorFormat, depthFormat, clearColor != null);
             if (ObjC.isNil(pipeline)) {
                 return;
             }
 
             MemorySegment depthState = depthFormat != MTLPixelFormat.Invalid.value
-                    ? ensureDepthStencilState(MTLCompareFunction.Always, clearDepthEnabled)
+                    ? ensureDepthStencilState(MTLCompareFunction.Always, clearDepth != null)
                     : MemorySegment.NULL;
 
             long width = MTLTexture.width(sizeTexture);
@@ -170,7 +167,7 @@ public final class MTLBuiltinPipelines {
             encodeClearDraw(
                     encoder, pipeline,
                     (long) viewportWidth, (long) viewportHeight,
-                    clearRed, clearGreen, clearBlue, clearAlpha,
+                    clearColor,
                     0L, 0L, width, height,
                     depthState, clearDepth
             );
@@ -180,10 +177,7 @@ public final class MTLBuiltinPipelines {
     static void clearColorDepthTexturesRegion(
             final MTLCommandBuffer commandBuffer,
             final MemorySegment colorTexture,
-            final float clearRed,
-            final float clearGreen,
-            final float clearBlue,
-            final float clearAlpha,
+            final Vector4fc clearColor,
             final MemorySegment depthTexture,
             final double clearDepth,
             final int x,
@@ -215,7 +209,7 @@ public final class MTLBuiltinPipelines {
                         colorTexture,
                         fullRegion ? MTLRenderPassDescriptor.LOAD_ACTION_CLEAR : MTLRenderPassDescriptor.LOAD_ACTION_LOAD,
                         MTLRenderPassDescriptor.STORE_ACTION_STORE,
-                        clearRed, clearGreen, clearBlue, clearAlpha
+                        clearColor
                 );
                 renderPass.depthAttachment(
                         depthTexture,
@@ -223,8 +217,7 @@ public final class MTLBuiltinPipelines {
                         MTLRenderPassDescriptor.STORE_ACTION_STORE,
                         clearDepth
                 );
-                long depthFormat = MTLTexture.pixelFormat(depthTexture);
-                if (hasStencil(depthFormat)) {
+                if (MTLPixelFormat.hasStencil(MTLTexture.pixelFormat(depthTexture))) {
                     renderPass.stencilAttachment(
                             depthTexture,
                             MTLRenderPassDescriptor.LOAD_ACTION_DONT_CARE,
@@ -248,7 +241,7 @@ public final class MTLBuiltinPipelines {
                 encodeClearDraw(
                         encoder, pipeline,
                         textureWidth, textureHeight,
-                        clearRed, clearGreen, clearBlue, clearAlpha,
+                        clearColor,
                         clampedX, clampedY, clampedMaxX - clampedX, clampedMaxY - clampedY,
                         depthState, clearDepth
                 );
@@ -282,7 +275,7 @@ public final class MTLBuiltinPipelines {
                         drawableTexture,
                         MTLRenderPassDescriptor.LOAD_ACTION_DONT_CARE,
                         MTLRenderPassDescriptor.STORE_ACTION_STORE,
-                        0.0, 0.0, 0.0, 0.0
+                        null
                 );
                 encoder = commandBuffer.makeRenderCommandEncoder(renderPass);
             }
@@ -317,16 +310,13 @@ public final class MTLBuiltinPipelines {
             final MemorySegment pipeline,
             final long viewportWidth,
             final long viewportHeight,
-            final float clearRed,
-            final float clearGreen,
-            final float clearBlue,
-            final float clearAlpha,
+            @Nullable final Vector4fc clearColor,
             final long scissorX,
             final long scissorY,
             final long scissorWidth,
             final long scissorHeight,
             final MemorySegment depthState,
-            final double clearDepth
+            @Nullable final Double clearDepth
     ) {
         encoder.setViewport(0.0, 0.0, viewportWidth, viewportHeight, 0.0, 1.0);
         encoder.setScissorRect(scissorX, scissorY, scissorWidth, scissorHeight);
@@ -337,12 +327,12 @@ public final class MTLBuiltinPipelines {
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
             MemorySegment uniforms = MemorySegment.ofAddress(stack.nmalloc(16, 48)).reinterpret(48);
-            float z = ObjC.isNil(depthState) ? 0.0f : (float) Math.clamp(clearDepth, 0.0, 1.0);
+            float z = ObjC.isNil(depthState) || clearDepth == null ? 0.0f : (float) Math.clamp(clearDepth, 0.0, 1.0);
             uniforms.set(JAVA_FLOAT, 0, z);
-            uniforms.set(JAVA_FLOAT, 32, clearRed);
-            uniforms.set(JAVA_FLOAT, 36, clearGreen);
-            uniforms.set(JAVA_FLOAT, 40, clearBlue);
-            uniforms.set(JAVA_FLOAT, 44, clearAlpha);
+            uniforms.set(JAVA_FLOAT, 32, clearColor == null ? 0.0f : clearColor.x());
+            uniforms.set(JAVA_FLOAT, 36, clearColor == null ? 0.0f : clearColor.y());
+            uniforms.set(JAVA_FLOAT, 40, clearColor == null ? 0.0f : clearColor.z());
+            uniforms.set(JAVA_FLOAT, 44, clearColor == null ? 0.0f : clearColor.w());
             encoder.setVertexBytes(uniforms, 48L, 1L);
         }
 
@@ -425,8 +415,4 @@ public final class MTLBuiltinPipelines {
         }
     }
 
-    private static boolean hasStencil(final long depthFormat) {
-        return depthFormat == MTLPixelFormat.Depth24Unorm_Stencil8.value
-                || depthFormat == MTLPixelFormat.Depth32Float_Stencil8.value;
-    }
 }

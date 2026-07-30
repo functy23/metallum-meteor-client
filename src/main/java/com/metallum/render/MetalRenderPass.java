@@ -45,8 +45,8 @@ final class MetalRenderPass implements RenderPassBackend {
     private final RenderPass.RenderArea renderArea;
     @Nullable
     private Vector4fc clearColor;
-    private boolean clearDepthEnabled;
-    private final double clearDepthValue;
+    @Nullable
+    private Double clearDepth;
     private final ScissorState scissorState = new ScissorState();
     private final GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[MAX_VERTEX_BUFFERS];
     private final HashMap<String, GpuBufferSlice> uniforms = new HashMap<>();
@@ -70,8 +70,7 @@ final class MetalRenderPass implements RenderPassBackend {
             @Nullable final GpuTextureView depthTexture,
             final RenderPass.RenderArea renderArea,
             @Nullable final Vector4fc clearColor,
-            final boolean clearDepthEnabled,
-            final double clearDepthValue
+            @Nullable final Double clearDepth
     ) {
         this.device = device;
         this.commandEncoder = encoder;
@@ -80,8 +79,7 @@ final class MetalRenderPass implements RenderPassBackend {
         this.depthTexture = depthTexture;
         this.renderArea = renderArea;
         this.clearColor = clearColor;
-        this.clearDepthEnabled = clearDepthEnabled;
-        this.clearDepthValue = clearDepthValue;
+        this.clearDepth = clearDepth;
     }
 
     @Override
@@ -352,7 +350,7 @@ final class MetalRenderPass implements RenderPassBackend {
     }
 
     void materializePendingClear() {
-        if (clearColor != null || clearDepthEnabled) {
+        if (clearColor != null || clearDepth != null) {
             renderEncoder();
         }
     }
@@ -360,23 +358,16 @@ final class MetalRenderPass implements RenderPassBackend {
     private MTLRenderCommandEncoder renderEncoder() {
         MetalGpuTextureView colorTextureView = (MetalGpuTextureView) colorTexture;
         MetalGpuTextureView depthTextureView = depthTexture == null ? null : (MetalGpuTextureView) depthTexture;
-        boolean clearColorNow = clearColor != null;
-        boolean clearDepthNow = clearDepthEnabled;
         MTLRenderCommandEncoder encoder = commandEncoder.renderCommandEncoder(
                 colorTextureView,
                 depthTextureView,
                 colorTexture.getWidth(0),
                 colorTexture.getHeight(0),
-                clearColorNow,
-                clearColorNow ? clearColor.x() : 0.0F,
-                clearColorNow ? clearColor.y() : 0.0F,
-                clearColorNow ? clearColor.z() : 0.0F,
-                clearColorNow ? clearColor.w() : 0.0F,
-                clearDepthNow,
-                clearDepthValue
+                clearColor,
+                clearDepth
         );
         clearColor = null;
-        clearDepthEnabled = false;
+        clearDepth = null;
         return encoder;
     }
 

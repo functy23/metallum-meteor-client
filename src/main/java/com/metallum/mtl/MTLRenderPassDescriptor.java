@@ -1,10 +1,11 @@
 package com.metallum.mtl;
 
-import com.metallum.objc.AutoreleasePool;
 import com.metallum.objc.Msg;
 import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Vector4fc;
+import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
 
@@ -46,39 +47,32 @@ public final class MTLRenderPassDescriptor implements AutoCloseable {
             final MemorySegment texture,
             final long loadAction,
             final long storeAction,
-            final double clearRed,
-            final double clearGreen,
-            final double clearBlue,
-            final double clearAlpha
+            @Nullable final Vector4fc clearColor
     ) {
-        try (AutoreleasePool _ = AutoreleasePool.push()) {
-            MemorySegment attachment = OBJECT_AT_INDEXED_SUBSCRIPT.sendPtr(COLOR_ATTACHMENTS.sendPtr(this.handle), index);
-            SET_TEXTURE.send(attachment, ObjC.orNil(texture));
-            SET_LOAD_ACTION.send(attachment, loadAction);
-            SET_STORE_ACTION.send(attachment, storeAction);
-            if (loadAction == LOAD_ACTION_CLEAR) {
-                SET_CLEAR_COLOR.send(attachment, clearRed, clearGreen, clearBlue, clearAlpha);
-            }
+        MemorySegment attachment = OBJECT_AT_INDEXED_SUBSCRIPT.sendPtr(COLOR_ATTACHMENTS.sendPtr(this.handle), index);
+        SET_TEXTURE.send(attachment, ObjC.orNil(texture));
+        SET_LOAD_ACTION.send(attachment, loadAction);
+        SET_STORE_ACTION.send(attachment, storeAction);
+        if (loadAction == LOAD_ACTION_CLEAR && clearColor != null) {
+            SET_CLEAR_COLOR.send(attachment, clearColor.x(), clearColor.y(), clearColor.z(), clearColor.w());
         }
     }
 
-    public void depthAttachment(final MemorySegment texture, final long loadAction, final long storeAction, final double clearDepth) {
-        try (AutoreleasePool _ = AutoreleasePool.push()) {
-            MemorySegment attachment = DEPTH_ATTACHMENT.sendPtr(this.handle);
-            SET_TEXTURE.send(attachment, ObjC.orNil(texture));
-            SET_LOAD_ACTION.send(attachment, loadAction);
-            SET_STORE_ACTION.send(attachment, storeAction);
-            SET_CLEAR_DEPTH.send(attachment, clearDepth);
+    public void depthAttachment(final MemorySegment texture, final long loadAction, final long storeAction, @Nullable final Double clearDepth) {
+        MemorySegment attachment = DEPTH_ATTACHMENT.sendPtr(this.handle);
+        SET_TEXTURE.send(attachment, ObjC.orNil(texture));
+        SET_LOAD_ACTION.send(attachment, loadAction);
+        SET_STORE_ACTION.send(attachment, storeAction);
+        if (loadAction == LOAD_ACTION_CLEAR && clearDepth != null) {
+            SET_CLEAR_DEPTH.send(attachment, clearDepth.doubleValue());
         }
     }
 
     public void stencilAttachment(final MemorySegment texture, final long loadAction, final long storeAction) {
-        try (AutoreleasePool _ = AutoreleasePool.push()) {
-            MemorySegment attachment = STENCIL_ATTACHMENT.sendPtr(this.handle);
-            SET_TEXTURE.send(attachment, ObjC.orNil(texture));
-            SET_LOAD_ACTION.send(attachment, loadAction);
-            SET_STORE_ACTION.send(attachment, storeAction);
-        }
+        MemorySegment attachment = STENCIL_ATTACHMENT.sendPtr(this.handle);
+        SET_TEXTURE.send(attachment, ObjC.orNil(texture));
+        SET_LOAD_ACTION.send(attachment, loadAction);
+        SET_STORE_ACTION.send(attachment, storeAction);
     }
 
     @Override

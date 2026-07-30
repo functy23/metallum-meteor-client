@@ -5,6 +5,8 @@ import com.metallum.objc.Msg;
 import com.metallum.objc.ObjC;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Vector4fc;
+import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
 
@@ -54,16 +56,11 @@ public final class MTLCommandBuffer {
 
     public MTLRenderCommandEncoder makeRenderCommandEncoder(
             final MemorySegment colorTexture,
+            @Nullable final Vector4fc clearColor,
             final MemorySegment depthTexture,
+            @Nullable final Double clearDepth,
             final double viewportWidth,
-            final double viewportHeight,
-            final int clearColorEnabled,
-            final float clearColorRed,
-            final float clearColorGreen,
-            final float clearColorBlue,
-            final float clearColorAlpha,
-            final int clearDepthEnabled,
-            final double clearDepth
+            final double viewportHeight
     ) {
         if (ObjC.isNil(colorTexture) && ObjC.isNil(depthTexture)) {
             throw new IllegalStateException("Render pass requires a color or depth attachment");
@@ -75,20 +72,19 @@ public final class MTLCommandBuffer {
                     renderPass.colorAttachment(
                             0,
                             colorTexture,
-                            clearColorEnabled != 0 ? MTLRenderPassDescriptor.LOAD_ACTION_CLEAR : MTLRenderPassDescriptor.LOAD_ACTION_LOAD,
+                            clearColor != null ? MTLRenderPassDescriptor.LOAD_ACTION_CLEAR : MTLRenderPassDescriptor.LOAD_ACTION_LOAD,
                             MTLRenderPassDescriptor.STORE_ACTION_STORE,
-                            clearColorRed, clearColorGreen, clearColorBlue, clearColorAlpha
+                            clearColor
                     );
                 }
                 if (!ObjC.isNil(depthTexture)) {
                     renderPass.depthAttachment(
                             depthTexture,
-                            clearDepthEnabled != 0 ? MTLRenderPassDescriptor.LOAD_ACTION_CLEAR : MTLRenderPassDescriptor.LOAD_ACTION_LOAD,
+                            clearDepth != null ? MTLRenderPassDescriptor.LOAD_ACTION_CLEAR : MTLRenderPassDescriptor.LOAD_ACTION_LOAD,
                             MTLRenderPassDescriptor.STORE_ACTION_STORE,
                             clearDepth
                     );
-                    long depthFormat = MTLTexture.pixelFormat(depthTexture);
-                    if (depthFormat == MTLPixelFormat.Depth24Unorm_Stencil8.value || depthFormat == MTLPixelFormat.Depth32Float_Stencil8.value) {
+                    if (MTLPixelFormat.hasStencil(MTLTexture.pixelFormat(depthTexture))) {
                         renderPass.stencilAttachment(
                                 depthTexture,
                                 MTLRenderPassDescriptor.LOAD_ACTION_DONT_CARE,
@@ -105,10 +101,7 @@ public final class MTLCommandBuffer {
 
     public void clearColorDepthTexturesRegion(
             final MemorySegment colorTexture,
-            final float clearColorRed,
-            final float clearColorGreen,
-            final float clearColorBlue,
-            final float clearColorAlpha,
+            final Vector4fc clearColor,
             final MemorySegment depthTexture,
             final double clearDepth,
             final int regionX,
@@ -120,10 +113,7 @@ public final class MTLCommandBuffer {
         MTLBuiltinPipelines.clearColorDepthTexturesRegion(
                 this,
                 colorTexture,
-                clearColorRed,
-                clearColorGreen,
-                clearColorBlue,
-                clearColorAlpha,
+                clearColor,
                 depthTexture,
                 clearDepth,
                 regionX,
