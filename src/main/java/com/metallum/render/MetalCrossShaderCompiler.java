@@ -54,10 +54,11 @@ final class MetalCrossShaderCompiler {
             List<String> vertexOutputs = extractVariableNames(vertexSpirv.outputs());
 
             vertexSpirv.rebind(tolerateUnprovidedInputs(MetalPipelineSupport.vertexAttributeNames(pipeline), vertexSpirv.inputs()), layoutEntries);
-            MslShader vertexMsl = spirvToMsl(vertexSpirv.spirv(), layoutEntries.size(), vertexAttributeFormats(pipeline));
+            MslShader vertexMsl = spirvToMsl(vertexSpirv.spirv(), layoutEntries.size(), vertexAttributeFormats(pipeline), true);
 
+            boolean enableFragDepth = pipeline.getDepthStencilState() != null;
             fragmentSpirv.rebind(tolerateUnprovidedInputs(vertexOutputs, fragmentSpirv.inputs()), layoutEntries);
-            MslShader fragmentMsl = spirvToMsl(fragmentSpirv.spirv(), layoutEntries.size(), Map.of());
+            MslShader fragmentMsl = spirvToMsl(fragmentSpirv.spirv(), layoutEntries.size(), Map.of(), enableFragDepth);
 
             String vertexEntryPoint = extractEntryPoint(vertexMsl.source(), VERTEX_ENTRY_PATTERN, "main0");
             String fragmentEntryPoint = extractEntryPoint(fragmentMsl.source(), FRAGMENT_ENTRY_PATTERN, "main0");
@@ -278,7 +279,12 @@ final class MetalCrossShaderCompiler {
         }
     }
 
-    private static MslShader spirvToMsl(final ByteBuffer spirvBytes, final int pushConstantBinding, final Map<String, GpuFormat> attributeFormats) throws ShaderCompileException {
+    private static MslShader spirvToMsl(
+            final ByteBuffer spirvBytes,
+            final int pushConstantBinding,
+            final Map<String, GpuFormat> attributeFormats,
+            final boolean enableFragDepth
+    ) throws ShaderCompileException {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer spirvWords = spirvBytes.asIntBuffer();
 
@@ -319,6 +325,12 @@ final class MetalCrossShaderCompiler {
                         Spvc.spvc_compiler_options_set_bool(options, Spvc.SPVC_COMPILER_OPTION_FLIP_VERTEX_Y, true),
                         "spvc_compiler_options_set_bool(FLIP_VERTEX_Y)"
                 );
+                if (!enableFragDepth) {
+                    checkSpvc(
+                            Spvc.spvc_compiler_options_set_bool(options, Spvc.SPVC_COMPILER_OPTION_MSL_ENABLE_FRAG_DEPTH_BUILTIN, false),
+                            "spvc_compiler_options_set_bool(MSL_ENABLE_FRAG_DEPTH_BUILTIN)"
+                    );
+                }
                 checkSpvc(Spvc.spvc_compiler_install_compiler_options(compiler, options), "spvc_compiler_install_compiler_options");
 
                 registerIntegerInputConversions(stack, compiler, attributeFormats);

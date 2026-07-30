@@ -1,5 +1,6 @@
 package com.metallum.render;
 
+import com.metallum.Metallum;
 import com.metallum.mtl.*;
 import com.metallum.objc.ObjC;
 import com.mojang.blaze3d.GpuFormat;
@@ -103,8 +104,10 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
         MemorySegment fragmentFunction = device.getOrCompileFunction(fragmentMsl, fragmentEntryPoint);
 
         try (MTLVertexDescriptor vertexDescriptor = buildVertexDescriptor(info, this.firstAvailableVertexBufferSlot)) {
-            this.withoutDepthPipeline = createPipeline(device, info, vertexFunction, fragmentFunction, vertexDescriptor, colorFormat, MTLPixelFormat.Invalid);
             this.withDepthPipeline = createPipeline(device, info, vertexFunction, fragmentFunction, vertexDescriptor, colorFormat, MTLPixelFormat.Depth32Float);
+            this.withoutDepthPipeline = depthStencilState == null
+                    ? createPipeline(device, info, vertexFunction, fragmentFunction, vertexDescriptor, colorFormat, MTLPixelFormat.Invalid)
+                    : MemorySegment.NULL;
         }
     }
 
@@ -147,13 +150,17 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
                 pipelineDesc.disableBlending(0, writeMask);
             }
 
-            return device.metalDevice().newRenderPipelineState(pipelineDesc);
+            MemorySegment pipeline = device.metalDevice().newRenderPipelineState(pipelineDesc);
+            if (ObjC.isNil(pipeline)) {
+                Metallum.LOGGER.error("[metallum] Pipeline {} failed to build with depth format {}", info.getLocation(), depthFormat);
+            }
+            return pipeline;
         }
     }
 
     @Override
     public boolean isValid() {
-        return !ObjC.isNil(this.withoutDepthPipeline);
+        return !ObjC.isNil(this.withDepthPipeline);
     }
 
     List<ResourceBinding> resources() {
@@ -186,7 +193,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
     }
 
     MemorySegment getNativePipeline(final boolean useDepth) {
-        return useDepth && !ObjC.isNil(this.withDepthPipeline) ? this.withDepthPipeline : this.withoutDepthPipeline;
+        return useDepth ? this.withDepthPipeline : this.withoutDepthPipeline;
     }
 
     MTLCullMode cullMode() {
