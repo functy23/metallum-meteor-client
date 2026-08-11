@@ -31,7 +31,7 @@ dependencies {
 	if (meteorClientJar != null) {
 		compileOnly files(meteorClientJar)
 	} else {
-		compileOnly files("../meteor-client/build/libs/meteor-client-26.2-local.jar")
+		compileOnly files("../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar")
 	}
 }
 

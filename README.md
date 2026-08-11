@@ -14,7 +14,7 @@
 - **条件加载**：仅当 `meteor-client` 存在时应用相关 mixin（通过 `MetallumMixinConfigPlugin` 门控），
   未安装 Meteor 时行为与上游一致。
 - **构建**：`build.gradle` 增加可选的 `compileOnly` 依赖（Meteor jar），
-  可通过 `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` 指定，默认为 `../meteor-client/build/libs/meteor-client-26.2-local.jar`。
+  可通过 `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` 指定，默认为 `../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar`。
 
 On top of the original Metallum (Apple Metal render backend for macOS), this fork adds Meteor Client compatibility:
 
@@ -25,7 +25,7 @@ On top of the original Metallum (Apple Metal render backend for macOS), this for
 - **Conditional**: the Meteor mixins are only applied when `meteor-client` is loaded (gated by `MetallumMixinConfigPlugin`);
   without Meteor the behaviour is identical to upstream.
 - **Build**: an optional `compileOnly` dependency on the Meteor jar was added to `build.gradle`;
-  point it with `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` (defaults to `../meteor-client/build/libs/meteor-client-26.2-local.jar`).
+  point it with `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` (defaults to `../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar`).
 
 ## 构建与安装 / Build & Install
 
