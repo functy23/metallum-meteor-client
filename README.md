@@ -33,9 +33,9 @@ On top of the original Metallum (Apple Metal render backend for macOS), this for
 ./gradlew build
 ```
 
-构建产物：`build/libs/metallum-<version>.jar`，放入 Fabric 实例的 `mods/` 目录即可（与适配版 Meteor Client 一同使用）。
+构建产物：`build/libs/metallum-<version>.jar`，放入 Fabric 实例的 `mods/` 目录即可（与[适配版 Meteor Client](https://github.com/functy23/meteor-client-metallum) 一同使用）。
 
-Artifact: `build/libs/metallum-<version>.jar` — drop it into your Fabric instance's `mods/` folder and use it together with the adapted Meteor Client.
+Artifact: `build/libs/metallum-<version>.jar` — drop it into your Fabric instance's `mods/` folder and use it together with the [adapted Meteor Client](https://github.com/functy23/meteor-client-metallum).
 
 ---
 
