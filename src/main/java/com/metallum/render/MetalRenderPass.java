@@ -13,6 +13,7 @@ import com.mojang.blaze3d.systems.RenderPassBackend;
 import com.mojang.blaze3d.systems.ScissorState;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import com.metallum.Metallum;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.SharedConstants;
@@ -611,7 +612,20 @@ final class MetalRenderPass implements RenderPassBackend {
 
             MetalGpuTextureView textureView = (MetalGpuTextureView) textureBinding.textureView();
             MetalGpuSampler sampler = (MetalGpuSampler) textureBinding.sampler();
-            bindTextureAndSampler(enc, textureView.nativeHandle(), sampler.nativeHandle(), binding.bindingIndex(), binding.stageMask());
+            MemorySegment textureHandle;
+            try {
+                textureHandle = textureView.nativeHandle();
+            } catch (IllegalStateException e) {
+                // Both the texture view and its underlying texture were closed
+                // before the draw was flushed. There is nothing valid left to
+                // bind; skip this descriptor instead of crashing (the GL backend
+                // never throws for closed texture views either).
+                if (VALIDATION) {
+                    Metallum.LOGGER.warn("Skipping closed texture view for sampler '{}'", binding.name());
+                }
+                return;
+            }
+            bindTextureAndSampler(enc, textureHandle, sampler.nativeHandle(), binding.bindingIndex(), binding.stageMask());
             return;
         }
 

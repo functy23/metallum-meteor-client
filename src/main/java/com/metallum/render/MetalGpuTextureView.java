@@ -22,11 +22,17 @@ final class MetalGpuTextureView extends GpuTextureView {
     }
 
     MemorySegment nativeHandle() {
+        MetalGpuTexture texture = (MetalGpuTexture) this.texture();
         if (this.closed) {
-            throw new IllegalStateException("Texture view is closed");
+            // The view was closed before the draw was flushed (some mods close
+            // texture views early). Mirror the GL backend, where
+            // GlTextureView#glId() keeps returning the underlying texture id even
+            // after the view is closed: bind the (still alive) underlying texture
+            // instead of throwing. If the texture itself was also closed, this
+            // throws, and MetalRenderPass skips the descriptor as a last resort.
+            return texture.nativeHandle();
         }
 
-        MetalGpuTexture texture = (MetalGpuTexture) this.texture();
         if (this.baseMipLevel() == 0 && this.mipLevels() >= texture.getMipLevels()) {
             return texture.nativeHandle();
         }
