@@ -105,9 +105,12 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
 
         try (MTLVertexDescriptor vertexDescriptor = buildVertexDescriptor(info, this.firstAvailableVertexBufferSlot)) {
             this.withDepthPipeline = createPipeline(device, info, vertexFunction, fragmentFunction, vertexDescriptor, colorFormat, MTLPixelFormat.Depth32Float);
-            this.withoutDepthPipeline = depthStencilState == null
-                    ? createPipeline(device, info, vertexFunction, fragmentFunction, vertexDescriptor, colorFormat, MTLPixelFormat.Invalid)
-                    : MemorySegment.NULL;
+            // Always compile a depth-less variant too. A render pass without a
+            // depth attachment (e.g. Meteor's Blur FBO) must use a pipeline whose
+            // depthStencilPixelFormat is Invalid; previously this was NULL whenever
+            // the pipeline declared a depth-stencil state, crashing with
+            // "Native pipeline is unavailable" (MetalRenderPass.bindDrawState).
+            this.withoutDepthPipeline = createPipeline(device, info, vertexFunction, fragmentFunction, vertexDescriptor, colorFormat, MTLPixelFormat.Invalid);
         }
     }
 
