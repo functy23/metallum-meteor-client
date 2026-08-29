@@ -293,7 +293,7 @@ final class MetalRenderPass implements RenderPassBackend {
         if (primitiveType == MTLPrimitiveType.TriangleFan) {
             drawTriangleFan(enc, firstVertex, vertexCount, instanceCount, firstInstance);
         } else {
-            enc.drawPrimitives(primitiveType, firstVertex, vertexCount, Math.max(1, instanceCount), firstInstance);
+            enc.drawPrimitives(primitiveType, firstVertex, vertexCount, instanceCount, firstInstance);
         }
     }
 
@@ -422,7 +422,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 }
             }
             GpuBufferSlice slice = mapped.slice();
-            encoder.drawIndexedPrimitives(MTLPrimitiveType.Triangle, indexCount, fanIndexType, ((MetalGpuBuffer) slice.buffer()).metalBuffer(), slice.offset(), Math.max(1, instanceCount), firstVertex, baseInstance);
+            encoder.drawIndexedPrimitives(MTLPrimitiveType.Triangle, indexCount, fanIndexType, ((MetalGpuBuffer) slice.buffer()).metalBuffer(), slice.offset(), instanceCount, firstVertex, baseInstance);
         }
     }
 
@@ -604,10 +604,6 @@ final class MetalRenderPass implements RenderPassBackend {
             TextureViewAndSampler textureBinding = samplers.get(binding.name());
             if (textureBinding == null) {
                 throw new IllegalStateException("Missing sampler " + binding.name());
-            }
-
-            if (VALIDATION && textureBinding.textureView().isClosed()) {
-                throw new IllegalStateException("Sampler " + binding.name() + " texture view has been closed");
             }
 
             MetalGpuTextureView textureView = (MetalGpuTextureView) textureBinding.textureView();
