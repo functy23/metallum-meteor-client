@@ -251,10 +251,11 @@ meteor.MetalCommandEncoderMixin       ← 仅当 meteor-client 已加载
 
 ## 7. 本 fork 与上游的差异清单
 
-`git diff upstream/master..master`（2026-08-29，合并 0.0.24 之后）全部内容：
+`git diff upstream/master...master`（2026-09-24，合并 0.0.24 之后；上游 HEAD 仍为 `fe3cc3b`，无新增提交）全部内容：
 
 | 文件 | 差异 |
 |---|---|
+| `AGENT.md` | 本文件，上游没有（fork 自有的代理工作指南） |
 | `README.md` | fork 说明、适配内容、构建/安装说明（双语） |
 | `build.gradle` | Meteor jar 的可选 `compileOnly` 依赖（`-PmeteorClientJar` 属性 + 默认伴生路径） |
 | `metallum.mixins.json` | 注册 `meteor.MetalDeviceMixin`、`meteor.MetalCommandEncoderMixin` |
@@ -297,7 +298,7 @@ git push origin master
 
 - [ ] `gradle.properties` 版本号取上游值；
 - [ ] `./gradlew build` 通过；
-- [ ] `git diff upstream/master..master` 只剩第 7 节列出的适配面；
+- [ ] `git diff upstream/master...master` 只剩第 7 节列出的适配面（含 fork 自有的 `AGENT.md`）；
 - [ ] `metallum.mixins.json` 与 `MetallumMixinConfigPlugin` 的一致性（新 mixin 都有门控）；
 - [ ] 若上游改了 `MetalDevice`/`MetalCommandEncoder` 结构，检查两个 meteor mixin 的 `@Shadow`/`@Mixin` 目标仍能解析。
 
