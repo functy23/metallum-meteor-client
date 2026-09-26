@@ -22,17 +22,27 @@ dependencies {
 	implementation "maven.modrinth:sodium:${project.sodium_version}"
 
 	// Optional Meteor Client compatibility (com.metallum.mixin.meteor.*).
-	// We only need Meteor's IGpuDevice interface at compile time; the mixins
+	// Only Meteor's IGpuDevice interface is needed at compile time; the mixins
 	// are gated at runtime by MetallumMixinConfigPlugin, so this must never be
-	// a runtime dependency. Point this at your Meteor Client build (or a
-	// published artifact) with:
-	//   ./gradlew -PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar build
+	// a runtime dependency.
+	//
+	// Resolution order:
+	//   1. -PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar
+	//   2. environment variable METEOR_CLIENT_JAR
+	//   3. libs/meteor-client-26.2-local.jar (gitignored; drop the jar in there)
+	// Official Meteor Client builds: https://meteorclient.com
+	// (or build https://github.com/MeteorDevelopment/meteor-client yourself).
 	def meteorClientJar = providers.gradleProperty("meteorClientJar").orNull
-	if (meteorClientJar != null) {
-		compileOnly files(meteorClientJar)
-	} else {
-		compileOnly files("../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar")
+			?: providers.environmentVariable("METEOR_CLIENT_JAR").orNull
+	if (meteorClientJar == null) {
+		meteorClientJar = file("libs/meteor-client-26.2-local.jar").absolutePath
 	}
+	if (!file(meteorClientJar).exists()) {
+		logger.warn("[metallum] Meteor Client jar not found: ${meteorClientJar}\n" +
+				"          com.metallum.mixin.meteor.* needs it to resolve IGpuDevice at compile time.\n" +
+				"          Pass -PmeteorClientJar=<path> or place the jar at libs/meteor-client-26.2-local.jar.")
+	}
+	compileOnly files(meteorClientJar)
 }
 
 processResources {

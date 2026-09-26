@@ -5,7 +5,10 @@
 
 ## 适配内容 / What's adapted
 
-在原有 Metallum（macOS 上的 Apple Metal 渲染后端）基础上，新增与 **Meteor Client** 的兼容：
+在原有 Metallum（macOS 上的 Apple Metal 渲染后端）基础上，新增与 **Meteor Client** 的兼容。
+
+> **2026-09-26 起**：伴生 fork `functy23/meteor-client-metallum` 已归档。本 fork 直接兼容**官方** Meteor Client ——
+> 无需任何改造版，因为 `MetalDevice` 已实现 `IGpuDevice`，官方代码里的强转即可成功。
 
 - **修复问题**：使用 Metal 后端时，打开 Meteor GUI 的滚动区域（`WView`）会抛
   `ClassCastException: com.metallum.render.MetalDevice cannot be cast to IGpuDevice` 并崩溃。
@@ -13,10 +16,15 @@
   `MetalCommandEncoder.createRenderPass` 返回时应用待定的 scissor，使 Meteor GUI 在 Metal 后端下正确裁剪。
 - **条件加载**：仅当 `meteor-client` 存在时应用相关 mixin（通过 `MetallumMixinConfigPlugin` 门控），
   未安装 Meteor 时行为与上游一致。
-- **构建**：`build.gradle` 增加可选的 `compileOnly` 依赖（Meteor jar），
-  可通过 `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` 指定，默认为 `../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar`。
+- **构建**：`build.gradle` 增加可选的 `compileOnly` 依赖（Meteor jar，仅编译期需要，**不会打包进产物**）。
+  可用 `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` 或环境变量 `METEOR_CLIENT_JAR` 指定，
+  也可直接把 jar 放到 `libs/meteor-client-26.2-local.jar`（已 gitignore）。
 
-On top of the original Metallum (Apple Metal render backend for macOS), this fork adds Meteor Client compatibility:
+On top of the original Metallum (Apple Metal render backend for macOS), this fork adds Meteor Client compatibility.
+
+> **Since 2026-09-26**: the companion fork `functy23/meteor-client-metallum` is archived. This fork works with the
+> **official** Meteor Client build — no adapted client is needed, because `MetalDevice` implements `IGpuDevice`
+> and the upstream casts now succeed.
 
 - **Fixed**: with the Metal backend active, opening a scrollable Meteor GUI view (`WView`) crashed with
   `ClassCastException: com.metallum.render.MetalDevice cannot be cast to IGpuDevice`.
@@ -24,8 +32,9 @@ On top of the original Metallum (Apple Metal render backend for macOS), this for
   applied when `MetalCommandEncoder.createRenderPass` returns, so Meteor's GUI clips correctly on Metal.
 - **Conditional**: the Meteor mixins are only applied when `meteor-client` is loaded (gated by `MetallumMixinConfigPlugin`);
   without Meteor the behaviour is identical to upstream.
-- **Build**: an optional `compileOnly` dependency on the Meteor jar was added to `build.gradle`;
-  point it with `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar` (defaults to `../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar`).
+- **Build**: an optional `compileOnly` dependency on the Meteor jar was added to `build.gradle`
+  (compile time only, **never bundled**); point it with `-PmeteorClientJar=/path/to/meteor-client-26.2-<build>.jar`
+  or the `METEOR_CLIENT_JAR` environment variable, or drop the jar at `libs/meteor-client-26.2-local.jar` (gitignored).
 
 ## 构建与安装 / Build & Install
 
@@ -33,9 +42,9 @@ On top of the original Metallum (Apple Metal render backend for macOS), this for
 ./gradlew build
 ```
 
-构建产物：`build/libs/metallum-<version>.jar`，放入 Fabric 实例的 `mods/` 目录即可（与[适配版 Meteor Client](https://github.com/functy23/meteor-client-metallum) 一同使用）。
+构建产物：`build/libs/metallum-<version>.jar`，放入 Fabric 实例的 `mods/` 目录即可（与官方 [Meteor Client](https://github.com/MeteorDevelopment/meteor-client) 一同使用）。
 
-Artifact: `build/libs/metallum-<version>.jar` — drop it into your Fabric instance's `mods/` folder and use it together with the [adapted Meteor Client](https://github.com/functy23/meteor-client-metallum).
+Artifact: `build/libs/metallum-<version>.jar` — drop it into your Fabric instance's `mods/` folder and use it together with the official [Meteor Client](https://github.com/MeteorDevelopment/meteor-client).
 
 ---
 

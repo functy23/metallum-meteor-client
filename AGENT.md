@@ -1,6 +1,8 @@
 # AGENT.md — metallum-meteor-client 代理工作指南
 
-> 本文件面向在本仓库工作的 AI 代理（以及新人开发者），尽可能完整地描述项目定位、架构、构建、上游同步与发版流程。内容基于 2026-08-29 时点的代码状态（上游 0.0.24 / fe3cc3b，本仓库合并提交 bc80cbe）。
+> 本文件面向在本仓库工作的 AI 代理（以及新人开发者），尽可能完整地描述项目定位、架构、构建、上游同步与发版流程。内容基于 2026-09-26 时点的代码状态（上游 0.0.24 / fe3cc3b）。
+>
+> **重要变更（2026-09-26）**：伴生 fork `functy23/meteor-client-metallum` 已**归档**。本 fork 现在直接搭配**官方** Meteor Client 使用——`MetalDevice` 实现 `IGpuDevice` 后，官方代码里的强转即可成功，不再需要任何改造版客户端。构建期的 Meteor jar 改为自行提供（见 4.1）。
 
 ---
 
@@ -28,7 +30,7 @@
 
 **本仓库 `functy23/metallum-meteor-client`** 是上游的**单独适配 fork**：
 
-- 核心目标只有一个：让 [Meteor Client](https://github.com/MeteorDevelopment/meteor-client)（实际搭配本作者的二次适配版 [functy23/meteor-client-metallum](https://github.com/functy23/meteor-client-metallum)）能在 Metal 后端下正常运行。
+- 核心目标只有一个：让 [Meteor Client](https://github.com/MeteorDevelopment/meteor-client)（**官方原版即可**，不需要任何改造版客户端）能在 Metal 后端下正常运行。
 - 与上游保持**低频同步**：README 明确声明"仅包含本适配所需的改动，不随上游同步"，即只在需要时手动合并上游。
 - **不修改上游核心渲染逻辑**。所有适配通过**新增 mixin** 和少量**防御性兜底**实现，未安装 Meteor 时行为与上游一致（由 mixin 门控保证）。
 
@@ -46,7 +48,7 @@
   - `v0.0.2` … `v0.0.23`：从上游历史继承的**上游标签**（不要动）。
   - `v0.0.23-adapted`、`v0.0.23-adapted-2`、`v0.0.23-adapted-3`、`v0.0.24-adapted`：**本 fork 的发版标签**，格式 `v<上游版本>-adapted[-<序号>]`。同一上游版本的第二个适配版起加 `-2`、`-3` 后缀。
 - `gh` CLI 的一个坑：本仓库配置了两个远程，`gh release create` 不带 `-R` 时会把默认仓库解析成 **upstream（kokodio/metallum）**，必须显式加 `-R functy23/metallum-meteor-client`。
-- 本地开发目录通常与伴生仓库 `../meteor-client-metallum` 并列存在（构建依赖它，见第 4 节）。
+- 不再有伴生仓库：`functy23/meteor-client-metallum` 已于 2026-09-26 归档，构建所需的 Meteor jar 自行提供（见 4.1）。
 
 ## 3. 关键事实速查表
 
@@ -60,7 +62,7 @@
 | Gradle | 9.4.1（wrapper 固定） | `gradle/wrapper/gradle-wrapper.properties` |
 | Loom | `1.16-SNAPSHOT` | `gradle.properties` |
 | Sodium | `mc26.2-0.9.1-fabric`（Modrinth maven，`implementation`） | `gradle.properties` |
-| Meteor Client | `compileOnly` 本地 jar，**绝不能是 runtime 依赖** | `build.gradle` |
+| Meteor Client | `compileOnly` 本地 jar（官方构建，自行提供），**绝不能是 runtime 依赖** | `build.gradle` |
 | 运行平台 | 仅 macOS + Apple Silicon（M1+）；编译本身可在任意平台 | README / 运行时依赖 Metal |
 | access widener | `src/main/resources/metallum.accesswidener`（放开 `SpvUniformBuffer/SpvSampler/SpvVariable`） | `build.gradle` / resources |
 | 自动化测试 | **没有**（`test NO-SOURCE`），`./gradlew build` 即全部检查 | 构建输出 |
@@ -71,13 +73,16 @@
 ### 4.1 前置条件
 
 1. **JDK 25**（例如 Zulu 25）。`java -version` 必须显示 25.x，否则 `options.release = 25` 直接编译失败。
-2. **Meteor Client jar（编译期需要）**。`build.gradle` 中的 `compileOnly` 逻辑按顺序取：
+2. **Meteor Client jar（编译期需要，自行提供）**。`build.gradle` 中的 `compileOnly` 逻辑按顺序取：
    - `-PmeteorClientJar=/absolute/path/to/meteor-client-26.2-<build>.jar`（Gradle 属性，优先）；
-   - 否则默认 `../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar`（伴生仓库的本地构建产物）。
+   - 环境变量 `METEOR_CLIENT_JAR`；
+   - 否则默认 `libs/meteor-client-26.2-local.jar`（仓库内目录，已 gitignore，把 jar 放进去即可）。
+   
+   jar 来源：[meteorclient.com](https://meteorclient.com) 的官方构建，或用上游 master 自行构建（`MeteorDevelopment/meteor-client`，产物名 `meteor-client-26.2-<build>.jar`）。**必须是官方原版**——伴生适配 fork 已归档，本 fork 不再依赖它。
    
    为什么需要：`com.metallum.mixin.meteor.*` 里的两个 mixin 实现了 Meteor 的 `meteordevelopment.meteorclient.mixininterface.IGpuDevice` 接口，编译期必须能解析该类型。**运行期绝不能打进依赖**——mixin 由 `MetallumMixinConfigPlugin` 门控（见第 6 节），未装 Meteor 时这些类不会被应用，jar 里对 Meteor 的引用必须保持"软"状态。
    
-   如果默认路径和 `-P` 都没有提供 jar：Gradle 配置阶段只告警不报错，但 `compileJava` 会在 meteor mixin 处报"找不到符号/程序包不存在"。**注意：CI（GitHub Actions ubuntu-latest）目前没有这个 jar，所以 CI 构建必然失败**——见 4.4。
+   如果三种来源都没有提供 jar：Gradle 配置阶段只打 warning（`[metallum] Meteor Client jar not found: ...`），但 `compileJava` 会在 meteor mixin 处报"找不到符号/程序包不存在"。**注意：CI（GitHub Actions ubuntu-latest）上没有这个 jar，所以 CI 构建必然失败**——见 4.4。
 3. 编译可在任意 OS 上进行；**运行**只能在 macOS + Apple Silicon（需要 `MTLCreateSystemDefaultDevice`、`CAMetalLayer` 等 ObjC 运行时）。
 
 ### 4.2 常用命令
@@ -98,7 +103,7 @@
 
 - 主 jar：`build/libs/metallum-<version>.jar`（`fabric.mod.json` 的 `${version}` 由 `processResources` 展开）。
 - 附带 `-sources.jar`（`withSourcesJar()`）。
-- 安装方式：把主 jar 放进 Fabric 实例 `mods/`，与适配版 Meteor（`functy23/meteor-client-metallum`）同用。
+- 安装方式：把主 jar 放进 Fabric 实例 `mods/`，与**官方 Meteor Client** 同用（无需改造版客户端）。
 
 ### 4.4 CI 的现状与局限
 
@@ -109,10 +114,10 @@
 
 **重要事实：截至 2026-08-29，这个 workflow 在本 fork 从未成功运行过**（`gh run list` 为空，历史发版全部是手动 `gh release create` 上传本地构建的 jar）。原因：
 
-- ubuntu 构建机上没有 `../meteor-client-metallum/...` jar，也没有传 `-PmeteorClientJar`，`compileJava` 会失败；
+- ubuntu 构建机上没有 Meteor jar（既没有 `libs/meteor-client-26.2-local.jar`，也没有传 `-PmeteorClientJar`），`compileJava` 会失败；
 - 即使构建成功，`publish` 也会因为没有 `MODRINTH_TOKEN`（且 Modrinth 项目 ID 属于上游）而出问题。
 
-因此**本 fork 的既定发版方式是手动构建 + `gh release create -R functy23/metallum-meteor-client`**（见第 10 节）。如果想修复 CI，需要解决 Meteor jar 的获取（例如在 workflow 里下载 meteor-client-metallum 的 release jar，或发布 Meteor 到 maven 并加 fallback 依赖），并处理 Modrinth 步骤。
+因此**本 fork 的既定发版方式是手动构建 + `gh release create -R functy23/metallum-meteor-client`**（见第 10 节）。如果想修复 CI，需要解决 Meteor jar 的获取（例如在 workflow 里下载官方 `meteor-client-26.2-<build>.jar`，或发布 Meteor 到自有 maven 并加 fallback 依赖），并处理 Modrinth 步骤。
 
 ## 5. 架构详解
 
@@ -257,7 +262,7 @@ meteor.MetalCommandEncoderMixin       ← 仅当 meteor-client 已加载
 |---|---|
 | `AGENT.md` | 本文件，上游没有（fork 自有的代理工作指南） |
 | `README.md` | fork 说明、适配内容、构建/安装说明（双语） |
-| `build.gradle` | Meteor jar 的可选 `compileOnly` 依赖（`-PmeteorClientJar` 属性 + 默认伴生路径） |
+| `build.gradle` | Meteor jar 的可选 `compileOnly` 依赖（`-PmeteorClientJar` / `METEOR_CLIENT_JAR` / `libs/meteor-client-26.2-local.jar` 兜底） |
 | `metallum.mixins.json` | 注册 `meteor.MetalDeviceMixin`、`meteor.MetalCommandEncoderMixin` |
 | `mixin/MetallumMixinConfigPlugin.java` | 增加 `.mixin.meteor.` → `isModLoaded("meteor-client")` 门控分支 |
 | `mixin/meteor/MetalDeviceMixin.java` | **新增**：`MetalDevice implements IGpuDevice`（scissor 状态） |
@@ -329,7 +334,7 @@ git push origin master
      --title "Metallum <version> 单独适配版 / Adapted build" \
      --notes "<双语说明：上游更新内容 + 本 fork 保留的适配 + 搭配使用链接>"
    ```
-   notes 风格参照 v0.0.24-adapted：分「上游 X.Y.Z 更新 / Upstream changes」「本仓库保留的适配 / Adaptation retained」两节，末尾附 `https://github.com/functy23/meteor-client-metallum/releases`。
+   notes 风格参照 v0.0.24-adapted：分「上游 X.Y.Z 更新 / Upstream changes」「本仓库保留的适配 / Adaptation retained」两节，末尾指向官方 Meteor Client（`https://github.com/MeteorDevelopment/meteor-client`）。
 6. **不要指望 CI 发版**：tag push 会触发 `build.yml`，但它会在 ubuntu 上因缺 Meteor jar 编译失败（且 Modrinth publish 指向上游项目），历史发版从未依赖它（见 4.4）。
 7. 发布后人工验证 release 资产里有主 jar（不带 `-dev`/`-sources` 后缀），说明文案完整。
 
@@ -347,7 +352,7 @@ git push origin master
 1. **`gh release create` 忘加 `-R`** → 落到 upstream 仓库或报"tag 未推送"。永远 `-R functy23/metallum-meteor-client`。
 2. **CI 期望与现实的落差**：workflow 看起来全自动，实际从未跑通；不要把它当作"构建通过"的证据，也不要在 PR 描述里引用它。
 3. **CI 里的 Modrinth project `w79ASAJD` 是上游的**，fork 不应向其发布；如果将来修 CI，先移除/替换该步骤。
-4. **Meteor jar 缺失时的报错形态**：Gradle 配置阶段只有 warning（"file ... not found"），真正的错误在 `compileJava`：meteor mixin 里 `IGpuDevice`、`meteordevelopment.*` 找不到符号。先检查 `-PmeteorClientJar` 或 `../meteor-client-metallum/build/libs/meteor-client-26.2-local.jar`。
+4. **Meteor jar 缺失时的报错形态**：Gradle 配置阶段只有 warning（`[metallum] Meteor Client jar not found: ...`），真正的错误在 `compileJava`：meteor mixin 里 `IGpuDevice`、`meteordevelopment.*` 找不到符号。先检查 `-PmeteorClientJar`、`METEOR_CLIENT_JAR` 或 `libs/meteor-client-26.2-local.jar`。
 5. **Loom 1.16-SNAPSHOT**：SNAPSHOT 插件，构建可复现性一般；本地 Gradle 9.4.1 wrapper 固定，不要随手升 wrapper。
 6. **Java 25 硬约束**：`options.release = 25` + `fabric.mod.json depends java >=25`。用低版本 JDK 会直接失败。
 7. **VALIDATION 双面性**：`MetalRenderPass.VALIDATION = SharedConstants.IS_RUNNING_IN_IDE`。IDE 内复现的"校验异常"在正常启动中并不存在；反之，生产环境靠的是延迟销毁和容错路径，IDE 调试时的崩溃日志可能误导。
@@ -355,12 +360,13 @@ git push origin master
 9. **上游标签继承**：仓库里 `v0.0.2..v0.0.23` 是上游标签，fork 发版标签一定带 `-adapted` 后缀，避免混淆（也避免和未来上游同名标签冲突）。
 10. **上游改动可能静默影响适配层**：上游改 `MetalDevice`/`MetalCommandEncoder` 的私有字段/方法名会让 meteor mixin 的 `@Shadow` 编译失败——构建通过不代表 mixin 语义还成立，合并后要人工过一遍两个 meteor mixin。
 11. **README 是对外门面**：改适配行为时同步更新 README 的"适配内容"小节（双语），保持与实际 diff 一致。
+12. **伴生仓库已归档**：不要再去 `functy23/meteor-client-metallum` 找"适配版 Meteor"——直接下载官方 Meteor Client 即可（本 fork 让它不崩、且 scissor 真正生效）。若哪天要重启那条线，GitHub 上可以 unarchive。
 
 ## 13. 相关链接
 
 - 上游仓库：<https://github.com/kokodio/metallum>
 - 本仓库：<https://github.com/functy23/metallum-meteor-client>
-- 伴生适配版 Meteor Client：<https://github.com/functy23/meteor-client-metallum>（本 fork 构建默认依赖它的本地 jar；运行时必须同装）
+- 伴生适配版 Meteor Client：<https://github.com/functy23/meteor-client-metallum>（**已于 2026-09-26 归档**，运行时不再需要：本 fork 直接兼容官方 Meteor Client；归档仓库 release 里的 jar 仍可作为 `compileOnly` 备选）
 - Meteor Client 上游：<https://github.com/MeteorDevelopment/meteor-client>
 - 最新发版：<https://github.com/functy23/metallum-meteor-client/releases>
 - Telemetry Worker：`telemetry/` 目录（Cloudflare Workers + D1）
